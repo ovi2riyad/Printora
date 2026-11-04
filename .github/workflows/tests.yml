@@ -1,0 +1,41 @@
+name: Windows tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      QT_QPA_PLATFORM: offscreen
+      LOCALAPPDATA: ${{ runner.temp }}\studio-photo-maker-test-data
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-lock.txt
+
+      - name: Install tested dependencies
+        run: python -m pip install -r requirements-lock.txt
+
+      - name: Run tests
+        run: python -m pytest -q -ra --junitxml=test-results.xml
+
+      - name: Save test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-results
+          path: test-results.xml
+          if-no-files-found: ignore

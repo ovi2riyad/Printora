@@ -1,0 +1,45 @@
+# Local Python and development tools
+/.tools/
+/.venv/
+/venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Generated builds and exports (use GitHub Releases for packaged applications)
+/build/
+/dist/
+/output/
+*.egg-info/
+
+# Private customer/demo photos and downloaded model weights
+/Demo/
+/assets/reference/
+/assets/models/
+/models/
+*.onnx
+*.download
+
+# Local databases, logs, credentials, and editor state
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.log
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+/.vs/
+/.vscode/
+/.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
