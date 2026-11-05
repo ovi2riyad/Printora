@@ -1,5 +1,18 @@
 ﻿# Release checklist
 
+## Professional studio update (2026-11-05)
+
+- [x] Audit active workflows and run baseline: 35 tests passed.
+- [x] Flexible exact-size layouts, live quantities, configurable print controls.
+- [x] Backward-compatible regional profiles and persistent categorized settings.
+- [x] Crop history, previews, library sorting/filtering/deleted recovery.
+- [x] Safe backup/restore, referenced-cache protection, rendering improvements.
+- [x] New regression tests and isolated studio acceptance: 57 tests; expanded source workflow saved 68 photos and preserved originals.
+- [x] Separate standalone build and bundled-only acceptance: 68 photos, all 19 checks passed, exit 0. Previous working release retained.
+- [x] Update README / PROJECT_INFO / validation and prepare the reviewed GitHub update.
+
+## Previous release
+
 - [x] Cropper-first dashboard and editable multi-print/perspective regions.
 - [x] Automatic tiled-sheet detection and camera EXIF orientation.
 - [x] Saved original imports, durable cropped-photo library and permanent serial numbers.

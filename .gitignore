@@ -14,6 +14,9 @@ htmlcov/
 /build/
 /dist/
 /output/
+/backups/
+*-backup*.zip
+/test-results.xml
 *.egg-info/
 
 # Private customer/demo photos and downloaded model weights

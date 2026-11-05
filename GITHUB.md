@@ -91,10 +91,10 @@ The installer downloads the model and verifies its expected checksum. The model 
 
 The Windows tests workflow runs for pushes, pull requests, and manual dispatch. It uses Python 3.12, pinned dependencies, headless Qt, and isolated application data. Its artifact contains the JUnit test report.
 
-Private demo images and portrait models are not downloaded by CI. Cases that explicitly require the supplied demo images skip when those files are absent. CI does not replace the full local demo/model acceptance run or an actual-size physical printer check.
+Private demo images, prior local release data, and portrait models are not downloaded by CI. The three demo-image cases and the prior-release-copy migration case skip when those local fixtures are absent. CI does not replace the full local demo/model acceptance run or an actual-size physical printer check.
 
 ## Distribute the Windows application
 
-Use a GitHub **Release asset** for an application ZIP, rather than committing `dist` or large model files to the source repository. Build locally with the portrait model installed, validate the frozen application, and ZIP the entire `dist/StudioPhotoMaker` folder including `_internal` and bundled third-party licenses. Upload that ZIP to a release only when you intend to distribute it.
+Use a GitHub **Release asset** for an application ZIP, rather than committing `dist` or large model files to the source repository. `build.bat` builds to `dist/candidate/StudioPhotoMaker` and requires the installed portrait model. Validate the frozen candidate before promoting it; the current updated local release is `dist/StudioPhotoMaker-v2`, with the previous `dist/StudioPhotoMaker` retained. ZIP the entire validated application folder including `_internal` and bundled third-party licenses. Upload that ZIP to a release only when you intend to distribute it.
 
 The source archive alone is for developers; it does not contain the ready-to-run EXE or bundled model. Users of a packaged release do not need Python. The exact PDF footprint remains unchanged by hosting the code on GitHub.

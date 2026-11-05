@@ -13,10 +13,10 @@ The application is implemented in **Python with PySide6/Qt Widgets**. It is not 
 The current standalone release is:
 
 ```text
-dist/StudioPhotoMaker/StudioPhotoMaker.exe
+dist/StudioPhotoMaker-v2/StudioPhotoMaker.exe
 ```
 
-Distribute the **whole `dist/StudioPhotoMaker` folder**, including `_internal`. End users do not need to install Python. Developers running the source do need a Python runtime and the dependencies.
+Distribute the **whole `dist/StudioPhotoMaker-v2` folder**, including `_internal`. The previous working release is retained separately at `dist/StudioPhotoMaker`. End users do not need Python. Developers running the source do need a Python runtime and dependencies. `build.bat` creates a separate candidate before a release is promoted.
 
 The project has already been implemented, tested, packaged, and exercised against the supplied demo images. Continue from the existing code. Do not replace it with a new scaffold or assume that the original feature request is still unimplemented.
 
@@ -46,6 +46,8 @@ Other established requirements:
 
 The user gave freedom to improve usability and finish the application. That does not imply that every Photoshop feature is required. Preserve the straightforward studio workflow.
 
+The subsequent master development request expanded the existing app with flexible print presets, regional profiles, easier quantities, categorized settings, crop history/library browsing, offline edge refinement, safe backup/restore, and a validated release. These are implemented in the active workflow; they are not a proposal to rebuild the application. The original architecture and older UI regression coverage remain.
+
 ## 3. Main workflows
 
 ### Cropper and durable library
@@ -54,11 +56,11 @@ Import supports JPG/JPEG, PNG, WEBP, BMP, and TIF/TIFF. Ctrl+O and drag-and-drop
 
 Imported sources are copied into application data. Byte-identical imports are deduplicated using SHA-256 and receive source serials displayed as `S000001`. The original external source is not edited.
 
-Crop detection first attempts a regular face-based grid for tightly tiled passport sheets, then falls back to contour/content detection for separate printed photographs. Each region has four editable points. Staff can move regions, drag corners, draw additional regions, and rotate extracted crops. Perspective transformation straightens tilted prints. A local face detector attempts to orient portraits upright.
+Crop detection first attempts a regular face-based grid for tightly tiled passport sheets, then falls back to contour/content detection. Very low-contrast sources get a detection-only autocontrast pass; the saved source is unchanged. Each region has four corner and four edge handles. Staff can move regions, draw regions, rotate, preview extraction, and undo/redo region edits. History is maintained separately per source for the current session; the current region state persists. Perspective transformation straightens tilted prints. A local face detector attempts to orient portraits upright.
 
 **Use Whole Image** handles an individual camera portrait or a photo that already contains both joint subjects. **Keep Selected Crop** and **Keep All Crops** save prepared images as PNG files plus small thumbnails. Each prepared photo receives a permanent serial displayed as `#000001`.
 
-The saved library supports search, rename, and removal from the visible gallery. Removal is a soft delete: underlying assets are retained because saved jobs may still reference them. Persisted photo serials are not recycled. The gallery displays up to 200 recent matching entries; searching can find older ones. Full images load lazily rather than all being decoded at startup.
+Crop Regions and Saved Library use separate sidebar tabs. The library supports serial/name search, rename, newest/oldest/serial sorting, Individual/Joint filters, larger previews, and soft removal/recovery. Initial kind is inferred from format/name and can be corrected with Mark Individual/Joint. Removed Photos exposes recoverable entries with their original serials; underlying files remain for saved jobs. `CropTray.query()` runs a bounded SQLite metadata query (200 matches), while full images load lazily. Startup retains lightweight available-photo metadata, not decoded originals.
 
 ### Portrait and joint composition
 
@@ -71,6 +73,8 @@ The picker uses checkboxes, and checked selections survive changes to the search
 
 Selected prepared assets are materialized if necessary, backgrounds are removed, then canvas-aware framing runs. Automatic framing uses foreground bounds and optional face boxes to place heads and shoulders, bring clothing to the lower edge, and fit a combined group without splitting it.
 
+The header's Photo Profiles manager handles add/edit/duplicate/delete/search, defaults, JSON import/export, and restoration of missing starter presets. Categories include Malaysia, India, USA, UK, Bangladesh, and Custom, with Individual/Joint kinds. Profiles contain dimensions/orientation, quantity, colors, border settings, and default layout/grid. An explicit Apply Selected Profile in Transform preserves every layer and editing parameter, applies photo/layout settings, and invalidates old sheet placements because canvas/layout geometry may have changed. Existing jobs remain independent of later profile edits.
+
 **Auto Frame**, **Fit Photo**, and **Fill Canvas** provide alternative starting positions. Automatic face detection is a positioning aid, not identity recognition or proof of document-photo compliance.
 
 ### Editing and saving
@@ -79,17 +83,19 @@ The editor has Transform, Finish, and Print controls. It supports direct layer d
 
 Finish controls include brightness, contrast, saturation, sharpness, mask contraction/expansion, softness, and editable Erase/Restore strokes. Strokes and adjustments are stored as settings; they do not overwrite source pixels. Restore reveals the original source alpha/pixels, so painting beyond the subject can reveal the old background.
 
-Undo/redo uses photo-state snapshots. Jobs auto-save after approximately **2.2 seconds** of idle editing, with explicit Save Job and Saved Jobs controls also available. Auto-save postpones while a worker is busy. Saved jobs restore editing settings and existing print placements.
+Undo/redo snapshots include the photo, print settings, placements, and page count. Ctrl+Z/redo dispatch to crop history when Cropper is active. Jobs auto-save after approximately **2.2 seconds** of idle editing; auto-save postpones while a worker is busy. Explicit Save Job and Saved Jobs remain available. Saved jobs restore editing settings and placements. Appearance and subject-transform edits retain placement coordinates; dimension/layout changes reset them deliberately. Quantity changes keep surviving copy IDs/coordinates and search free slots for new copies.
 
-Edited-image export writes PNG or JPEG at 300 DPI with the configured border. The Before/Original Background comparison is a view option, not an instruction to export the unprocessed source. Final rendered photos have their selected background; PNG export is not currently a transparent-cutout export workflow.
+Edited-image export writes PNG/JPEG at configured DPI (300 default), with an inside border and atomic replacement. The Before/Original Background comparison is view-only. Final rendered photos have their selected background; PNG export is not a transparent-cutout export workflow. Optional per-layer halo reduction is stored as `defringe`; zero preserves old output behavior.
 
 ### Print sheets and PDF
 
-Copies are placed on portrait or landscape A4. The active studio workflow uses **10 mm margins** and **0.2 mm horizontal and vertical gaps**. Blank page space creates the thin white separators.
+Copies are placed on portrait or landscape A4. Margins and horizontal/vertical gaps are configurable; studio defaults are **10 mm / 0.2 mm / 0.2 mm**. Blank page space creates white separators. Shared PrintOptions controls appear in both the photo editor and sheet preview. Quantities offer 2/4/6/8/10/12, numeric entry, and ±2 buttons, with live page updates.
+
+Layout modes are `auto` (existing centered-row/mixed-size packing), `grid_2x2` (centered four-photo blocks), `custom` (requested centered rows/columns), and `max_fit` (centered full-capacity grid). Quantities paginate without resizing or automatically rotating photographs. Grid modes place each distinct photo group on its own sequence of pages; automatic mode retains mixed-size row packing. `layout_capacity()` supplies fit explanations and alternatives. `resize_copies()` preserves manual copy coordinates. Reset Automatic Layout is explicit.
 
 At 45 mm width, four copies fit across portrait A4 and six across landscape A4. Five 45 mm photos require at least 225 mm before margins/gaps, so they cannot fit across a 210 mm portrait page at full size. At 35 mm width, five fit across portrait A4 with the current margins. Never resize photos silently to satisfy a requested row count.
 
-Auto layout centers rows, supports quantities and additional pages, and keeps nominal dimensions. Staff can move placements in preview; validation checks bounds, overlaps, missing copies, duplicate copies, and stale dimensions before export. Existing valid placements should be reused rather than regenerated merely by reopening preview.
+Staff can move placements in preview; validation checks bounds/margins, overlaps, copy identity, missing/duplicate copies, and stale dimensions. New jobs set `enforce_margins=True`; legacy jobs without this flag retain their previous page-boundary behavior. Existing valid placements are reused when reopening preview. A per-page vertical sweep avoids comparing placements on unrelated pages/rows, including large orders.
 
 PDF geometry uses exact millimetres converted to points. Photo borders are drawn inside the footprint. Print PDFs at **Actual Size / 100%**. A physical printer/ruler check remains necessary; no physical printer was available during development validation.
 
@@ -115,8 +121,10 @@ app/
     transform_canvas.py         ACTIVE Photoshop-style editing canvas
     canvas.py                   Shared/base editor and print-preview canvas
     workers.py                  QRunnable worker and result/error signals
-    settings.py                 Preferences, model installation, calibration
+    settings.py                 Legacy preferences; shared model installer/calibration
     profiles.py                 Profile management UI
+    studio_settings.py          ACTIVE six-tab settings, storage controls; reuses installer
+    print_options.py            Shared editor/sheet layout controls
     main_window.py              Earlier advanced interface, retained in repository
 tests/                          Unit, integration, PDF, and Qt mouse-interaction tests
 Demo/                           User-supplied private demo photographs
@@ -137,7 +145,11 @@ GITHUB.md                       GitHub upload, fresh-clone, CI, and release guid
 .tools/                         Local runtime, logs, diagnostics, development outputs
 build/                          Generated PyInstaller build files
 dist/StudioPhotoMaker/          Generated standalone Windows application folder
+dist/StudioPhotoMaker-v2/       Updated validated release, previous release retained
+dist/candidate/                Separate candidate build destination
 ```
+
+Additional services: `services/profiles.py` validates/applies profile payloads; `preferences.py` supplies active defaults/validation; `storage.py` implements verified backup, path-remapped staged restore, interrupted-swap recovery, and reference-aware cache cleanup. The legacy `settings.py` is retained and supplies the shared model installer/calibration methods used by `StudioSettings`.
 
 **Entry-point distinction:** `main.py` imports `StudioWindow` from `app/ui/studio_window.py` as `MainWindow`. Editing `app/ui/main_window.py` alone will not change the current app's main interface. The old interface remains relevant to some regression tests and shared code, so do not delete it casually.
 
@@ -145,7 +157,7 @@ dist/StudioPhotoMaker/          Generated standalone Windows application folder
 
 ### Domain objects
 
-`Layer` stores source and processed-image paths, normalized center `x/y`, relative scale, rotation, erosion, feather, label, visibility, lock state, flips, four tone factors, and mask strokes. Default center is `(0.5, 0.5)` and default tone factors are `1.0`.
+`Layer` stores source and processed-image paths, normalized center `x/y`, relative scale, rotation, erosion, feather, label, visibility, lock state, flips, four tone factors, mask strokes, and `defringe=0.0`. The new field is appended to preserve earlier positional arguments; old JSON jobs receive its default. Default center is `(0.5, 0.5)` and tone factors are `1.0`.
 
 The field named **`mask` is a path to a background-removed RGBA image**, not just a grayscale mask. Its alpha is the initial segmentation mask. If absent, preparation uses the source image.
 
@@ -156,6 +168,8 @@ The field named **`mask` is a path to a background-removed RGBA image**, not jus
 `Job` stores ID/name, photos, placements, page count, and print settings. Jobs serialize to JSON via dataclasses and reconstruct layers through `from_dict()` methods.
 
 **Default-setting caveat:** the generic `Job` dataclass and some legacy settings still default to 2 mm horizontal / 3 mm vertical gaps. `StudioWindow.start_workflow()` explicitly overrides these to **0.2 / 0.2 mm**. Read the active call path before changing defaults or claiming every settings field controls the focused interface.
+
+Active new-job settings now honor persisted preferences. A selected default profile supplies a base, then stored Photo/Print preferences override corresponding defaults. Applying a profile explicitly in the editor applies its own full photo/layout settings. General startup workflow and guide preferences also persist. DPI is stored with each new job; old jobs fall back to 300 for export. Settings changes do not rewrite existing jobs.
 
 ### Rendering rules
 
@@ -168,6 +182,8 @@ The field named **`mask` is a path to a background-removed RGBA image**, not jus
 - Mask stroke points use normalized image coordinates; radius is a fraction of image width. Canvas mapping accounts for flips before storing strokes.
 - `render_photo()` itself does not draw the border. PDF export draws an inside vector border; edited-image export adds an inside raster border separately.
 - Locked layers cannot be directly transformed/painted. Hidden layers are excluded from the final composition.
+- Sheet preview draws an inside vector border in page units, matching the PDF stroke exactly even when thickness would be a fractional raster pixel. `render_bordered_photo()` is used for raster image export. Preview pixmaps map to exact placement width AND height rather than inheriting pixel-rounding errors from a single scale factor. The vector-border option is opt-in so the old interface's baked-border preview remains compatible.
+- Raster exports above 50 megapixels and transformed layer rasters above 100 megapixels fail with a clear error before allocating oversized images. These are memory-safety limits, not automatic changes to requested dimensions.
 
 ## 6. Persistent storage and backup
 
@@ -196,7 +212,7 @@ The main database uses SQLite WAL and contains:
 
 The library database uses SQLite WAL and contains:
 
-- `photos(serial INTEGER PRIMARY KEY AUTOINCREMENT, id UNIQUE, name, source, asset, thumb, width, height, deleted)`.
+- `photos(serial INTEGER PRIMARY KEY AUTOINCREMENT, id UNIQUE, name, source, asset, thumb, width, height, deleted, kind)`.
 - `sources(serial INTEGER PRIMARY KEY AUTOINCREMENT, digest UNIQUE, name, asset)`.
 - `source_regions(asset PRIMARY KEY, payload)` — serialized crop quadrilaterals/rotation.
 
@@ -204,11 +220,15 @@ The library database uses SQLite WAL and contains:
 
 `PreparedPhoto.image` loads its asset when needed; `size` can use stored dimensions without decoding it. Missing images raise a useful error, while thumbnails can display a Missing placeholder so the gallery remains usable.
 
-Back up the **whole application-data folder with the app closed**, including cache files referenced by saved jobs. Older jobs may reference external files too. Asset paths are currently stored as paths, so restoring to a different user/location may require path migration; there is no dedicated portable archive/import feature.
+The Storage tab creates manifest/checksum ZIP backups using the SQLite backup API, including committed WAL contents, local assets, and externally referenced saved-job images. Models are optional. ZIP creation is atomic. Manual backups of the entire folder should still be made with the app closed.
+
+Restore verifies the exact ZIP inventory, safe paths, SHA-256 hashes, and SQLite integrity in a sibling staging directory. It remaps job/config/library/source-region paths and included external references to the destination. Installed models are retained when the archive omits models. After user confirmation, the UI stops workers/timers, closes both databases, retains the old directory as `StudioPhotoMaker.before-restore-...`, installs the staged directory, and relaunches. `data_root()` calls `recover_restore()` BEFORE mkdir so an interrupted swap cannot silently create an empty replacement library. Pending journal/staging/previous paths are checked before recovery. Old folders are retained; no production folder is recursively deleted.
+
+Safe cache cleanup uses references from every saved job plus the current edit, deletes only old unreferenced PNG/temp files directly inside `cache`, and leaves library/source assets alone. A corrupt job payload aborts reference scanning rather than allowing unsafe cleanup.
 
 Preserve SQLite photo serials, source assets, and job references when adding migrations. Soft deletion is deliberate. Do not implement blanket cache/library cleanup without checking saved-job dependencies.
 
-Some comments in `cropping.py` still describe the earlier memory tray or say only selected crops become durable. The production implementation with `root` saves crops immediately; use the implementation and this distinction when interpreting those comments.
+Migration details: `profile_schema_version=2` adds missing starters (including Bangladesh) without overwriting existing names/payloads/jobs. Missing legacy fields are normalized when read/applied, and saved profile updates validate new fields. Library migration checks `PRAGMA table_info`, adds `photos.kind` only when absent, and sets `user_version=2`. Existing serials, paths, deletion state, source records, and job payloads are preserved. Re-importing a missing saved source updates its existing source serial rather than replacing that row. Regression tests migrate both synthetic legacy databases and a copy of previous-release acceptance data.
 
 ## 7. Background removal, framing, and threading
 
@@ -222,7 +242,7 @@ Within each folder it prefers `u2net_human_seg.onnx`, then `u2netp.onnx`. The re
 
 `remove_background()` performs inference directly with **ONNX Runtime CPUExecutionProvider**. It does not import `rembg` at runtime. It reuses a model session guarded by a lock and uses four intra-op threads / one inter-op thread. Inputs are resized to 320 × 320, normalized, and fed as NCHW tensors; the predicted alpha is resized to the working image and multiplied by original alpha. Segmentation working images are capped at 4000 pixels per edge; general loading defaults to a 6000-pixel cap. Prepared image assets are therefore not a promise of unlimited camera-resolution processing.
 
-Cached segmentation filenames hash the resolved source path, source modification time, model path, and model modification time. `force=True` requests regeneration. Cache PNG writes use a temporary file and replacement.
+Cached segmentation filenames hash source/model paths and modification times plus processing quality. `force=True` requests regeneration; selecting an already-processed library asset can reuse a cache. Working-image limits are 2000 pixels for Fast and 4000 for Balanced/Fine. Fine applies a small source-luminance guided matte refinement to uncertain alpha edges. Per-layer halo reduction optionally borrows nearby opaque foreground colors; it preserves alpha and defaults to off. These controls do not guarantee perfect hair/edges.
 
 `frame_photo(photo, mode)` handles automatic framing, whole-image fit, or cover fill. It uses processed foreground bounds and optional OpenCV Haar frontal-face boxes. One combined joint layer is treated as a group; multiple subject layers receive separate canvas positions. Alignment helpers can match detected head sizes and align bottoms.
 
@@ -257,12 +277,12 @@ Primary dependencies are PySide6-Essentials, Pillow, opencv-python-headless, Num
 Clean build:
 
 ```powershell
-& '.\.tools\python\python.exe' -m PyInstaller --clean --noconfirm StudioPhotoMaker.spec
+& '.\.tools\python\python.exe' -m PyInstaller --clean --noconfirm --distpath dist\candidate --workpath build\candidate StudioPhotoMaker.spec
 ```
 
 The spec makes an **onedir**, GUI application (`console=False`), collects ONNX Runtime libraries and OpenCV data, and excludes heavy unused packages such as rembg, numba, scipy, skimage, matplotlib, and Qt WebEngine.
 
-**Model packaging caveat:** the spec includes `%LOCALAPPDATA%/StudioPhotoMaker/models/u2net_human_seg.onnx` only if that file exists. A build can succeed without it. Ensure the model exists at build time, verify `_internal/models` in the output, and run the frozen acceptance workflow without an external model override. Do not redirect `LOCALAPPDATA` to an empty test folder while building unless the expected model is available there.
+**Model packaging:** the spec now fails clearly unless `%LOCALAPPDATA%/StudioPhotoMaker/models/u2net_human_seg.onnx` exists. Install it before building, verify `_internal/models`, and run frozen acceptance without an external model override. Do not redirect `LOCALAPPDATA` to an empty test folder while building. `build.bat` uses candidate destinations to preserve working releases; only promote after validation.
 
 The latest delivered package includes README, validation, checklist, and attribution documents copied alongside the executable. The spec does not currently automate those documentation copies. After a new release, copy updated distribution docs as needed. Changes to source code require rebuilding to appear in the EXE; documentation-only updates do not require rebuilding it.
 
@@ -274,7 +294,7 @@ The latest delivered package includes README, validation, checklist, and attribu
 & '.\.tools\python\python.exe' -m pytest -q
 ```
 
-The recorded release result is **35 tests passed** on Windows. This is a historical validation result, not a guarantee for future changes. Two existing Pillow `getdata` deprecation warnings were recorded in synthetic-image tests.
+The professional update passed **57 tests in 13.86 seconds** on Windows using Python 3.12.10 x64. The pre-update baseline was 35 passing tests. Two existing Pillow `getdata` deprecation warnings remain in synthetic-image tests. These are recorded executed results, not a guarantee for future changes.
 
 Tests cover physical geometry, parsed PDF placement, quantities/pagination, boundary/overlap checks, original preservation, EXIF orientation, perspective cropping, actual Qt mouse transforms, editable mask behavior, undo/redo, library persistence, source deduplication, lazy images, serial selection, and joint input variants.
 
@@ -285,6 +305,7 @@ Relevant suites:
 - `test_guided_ui.py`: focused workflow behavior.
 - `test_cropper.py`: crop preparation and interaction.
 - `test_final_workflow.py`: durable serial library, framing, real transform gestures, mask/tone serialization, combined joints, picker search, and tiled demo counts.
+- `test_studio_upgrade.py`: portrait/joint 2 × 2 PDFs, custom/max-fit grids, quantities/manual placements, 10,000-copy identity, profile/data migrations, prior-release data copy, removed recovery, preferences, crop edge/history controls, border/PDF-image consistency, fine matte/halo behavior, low-contrast detection, verified cross-path backups, corrupt/unsafe archive rejection, cache protection, interrupted restore recovery, and raster allocation limits.
 
 Some demo-dependent cases skip if user fixtures are absent. Review skips before claiming the demo behavior was checked on a different machine.
 
@@ -305,7 +326,7 @@ try {
     Remove-Item Env:\STUDIO_VERIFY_MODEL_DIR -ErrorAction SilentlyContinue
     $reviewOutput = Join-Path $reviewFolder 'results'
     $reviewArguments = '--verify-studio "Demo" "' + $reviewOutput + '"'
-    $reviewProcess = Start-Process -FilePath '.\dist\StudioPhotoMaker\StudioPhotoMaker.exe' -ArgumentList $reviewArguments -WorkingDirectory (Get-Location).Path -WindowStyle Hidden -Wait -PassThru
+    $reviewProcess = Start-Process -FilePath '.\dist\StudioPhotoMaker-v2\StudioPhotoMaker.exe' -ArgumentList $reviewArguments -WorkingDirectory (Get-Location).Path -WindowStyle Hidden -Wait -PassThru
     $reviewProcess.ExitCode
     Get-Content (Join-Path $reviewOutput 'result.json')
 }
@@ -333,7 +354,9 @@ Other CLI modes are `--smoke-test OUTPUT.png`, `--verify-cropper SOURCE OUTPUT_F
 | Four `Demo/joint (...).jpg` combined examples | 4 total |
 | **Total** | **68** |
 
-The full source acceptance passed in 32.28 seconds. A clean standalone build passed in 34.2 seconds, exit code 0, using fresh app data and only its bundled model. These timings describe the development machine, not a performance guarantee.
+The expanded source acceptance passed in **40.16 seconds**, saving the same 68 photos. It additionally exercised all four layout modes, live quantities/manual coordinate retention, profile application, crop history, removed-photo recovery, fine-edge inference, categorized settings, backup/restore to a different path, and saved preference reopening. See `VALIDATION.md` for final packaged acceptance and GitHub checks. Timings describe the development machine, not a performance guarantee. The previous release's source/package results were 32.28 / 34.2 seconds and are historical baseline evidence.
+
+The final updated frozen application passed the same expanded acceptance in **35.36 seconds**, exit 0, using fresh app data and only its bundled model. It saved 68 numbered photos and passed all 19 workflow checks. The previous release folder is retained; new output is promoted separately to `dist/StudioPhotoMaker-v2` after verification.
 
 The release acceptance checked source/crop persistence, serials, automatic framing, combined and separate joint composition, editable mask/tone settings, PDFs, restart behavior, lazy loading, and unchanged original-file hashes. Screenshots and rendered outputs were inspected. Face detectors can return false positives; detector box counts are not actual person-count guarantees.
 
@@ -343,6 +366,10 @@ Local evidence, if still present:
 - `.tools/studio-release-data/` — isolated acceptance user data.
 - `.tools/final-review/` — source-run acceptance artifacts.
 - `.tools/studio-release-build.log` — build log.
+- `.tools/upgrade-full-check/` — expanded source acceptance results and screenshots.
+- `.tools/upgrade-final-frozen-check/` — final updated-package acceptance results.
+- `.tools/upgrade-final-build.log` — updated candidate build log.
+- `.tools/previous-release-preserved.json` — previous EXE hash for preservation checks.
 
 Keep user demo photos and diagnostic portraits local. They are private test inputs, not assets to upload or bundle for end users.
 
@@ -356,12 +383,15 @@ The Git repository excludes these private fixtures, local tools, database files,
 - No HEIC/RAW import, PSD compatibility, or full Photoshop feature set.
 - No direct printer-driver scaling application; saved calibration preferences do not silently alter exact nominal photo-PDF geometry.
 - No interruption of an active inference call.
-- Library/assets are path-based; no complete portable project archive or cross-user restore migration UI.
-- Generic/legacy settings and the focused interface do not necessarily expose the same options; trace active behavior before extending either.
-- Layout overlap validation compares placement pairs and can become expensive for very large orders. Optimize with per-page grouping/spatial indexing if actual workloads justify it, while preserving validation.
+- Backups require enough space for a staged copy and retain the previous directory after restore. External export destinations are not made available merely by restoring customer assets.
+- The legacy interface retains its older settings surface. Active preferences live in `studio_settings.py`; inspect the correct call path before extending either.
+- Maximum-fit uses a non-rotating rectangular grid for the chosen photo size; automatic mode handles mixed-size packing. There is no arbitrary-angle nesting optimizer.
+- Library browsing bounds decoded thumbnails/full images; lightweight available-photo metadata is still retained for existing call compatibility.
 - Government-photo presets are size starting points, not current-rule or application-acceptance guarantees. Do not claim background editing is allowed for every authority.
 
 Optional future work is listed in `TODO.md`. No additional feature was left pending merely because the last user asked for this handoff document.
+
+The professional update adds no third-party Python dependency. Notable files changed are `core/database.py`, `models/domain.py`, `services/{cropping,framing,imaging,layout,studio_diagnostics}.py`, `ui/{canvas,cropper,profiles,studio_window}.py`, the build spec/script, tests, CI, and docs. New modules are `services/{profiles,preferences,storage}.py`, `ui/{print_options,studio_settings}.py`, and `tests/test_studio_upgrade.py`. The legacy interface/framework were retained, and production user data was never used for destructive testing.
 
 ## 11. Guidance for the next AI or developer
 

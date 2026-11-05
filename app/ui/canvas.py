@@ -1,7 +1,7 @@
 from PIL.ImageQt import ImageQt
 from PySide6.QtCore import Qt,Signal,QRectF
-from PySide6.QtGui import QPixmap,QPen,QColor,QPainter,QPainterPath
-from PySide6.QtWidgets import QGraphicsView,QGraphicsScene,QGraphicsPixmapItem,QGraphicsItem
+from PySide6.QtGui import QPixmap,QPen,QColor,QPainter,QPainterPath,QTransform
+from PySide6.QtWidgets import QGraphicsView,QGraphicsScene,QGraphicsPixmapItem,QGraphicsItem,QGraphicsRectItem
 from app.services.layout import page_size
 
 def pixmap(im): return QPixmap.fromImage(ImageQt(im.convert('RGBA')))
@@ -40,29 +40,37 @@ class EditorCanvas(QGraphicsView):
     def wheelEvent(self,e): self.zoomed.emit(1.08 if e.angleDelta().y()>0 else 1/1.08)
 
 class PrintItem(QGraphicsPixmapItem):
-    def __init__(self,im,placement,pw,ph,on_move):
-        super().__init__(pixmap(im));self.r=placement;self.pw=pw;self.ph=ph;self.on_move=on_move
-        self.setTransformOriginPoint(0,0);self.setScale(placement.width*3/self.pixmap().width());self.setPos(placement.x*3,placement.y*3)
+    def __init__(self,im,placement,pw,ph,on_move,margin=0,photo=None):
+        super().__init__(pixmap(im));self.r=placement;self.pw=pw;self.ph=ph;self.on_move=on_move;self.margin=margin
+        self.setTransformationMode(Qt.SmoothTransformation);self.setTransform(QTransform.fromScale(placement.width*3/self.pixmap().width(),placement.height*3/self.pixmap().height()));self.setPos(placement.x*3,placement.y*3)
         self.setFlags(QGraphicsItem.ItemIsMovable|QGraphicsItem.ItemIsSelectable)
+        if photo is not None and photo.border and photo.border_mm:
+            # Cancel the pixmap transform for a border measured in page units.
+            # This matches the PDF stroke exactly, even at fractional raster pixels.
+            width,height=placement.width*3,placement.height*3;b=photo.border_mm*3
+            self.border_item=QGraphicsRectItem(b/2,b/2,width-b,height-b,self)
+            self.border_item.setTransform(QTransform.fromScale(self.pixmap().width()/width,self.pixmap().height()/height))
+            self.border_item.setPen(QPen(QColor(photo.border_color),b));self.border_item.setAcceptedMouseButtons(Qt.NoButton)
     def mouseReleaseEvent(self,e):
         super().mouseReleaseEvent(e)
-        self.r.x=max(0,min(self.pw-self.r.width,round(self.x()/3*2)/2))
-        self.r.y=max(0,min(self.ph-self.r.height,round(self.y()/3*2)/2))
+        self.r.x=max(self.margin,min(self.pw-self.margin-self.r.width,round(self.x()/3*2)/2))
+        self.r.y=max(self.margin,min(self.ph-self.margin-self.r.height,round(self.y()/3*2)/2))
         self.setPos(self.r.x*3,self.r.y*3);self.on_move()
 
 class PrintCanvas(QGraphicsView):
     changed=Signal()
     def __init__(self):
         super().__init__();self.setScene(QGraphicsScene(self));self.setRenderHint(QPainter.Antialiasing);self.setMinimumSize(400,450)
-    def display(self,job,page,images):
+    def display(self,job,page,images,vector_borders=False):
         self.scene().clear();pw,ph=page_size(job.print_settings)
         self.scene().addRect(0,0,pw*3,ph*3,QPen(QColor('#cccccc')),QColor('white'))
         m=job.print_settings['margin']*3
         pen=QPen(QColor('#b8c5d1'));pen.setStyle(Qt.DashLine)
         self.scene().addRect(m,m,pw*3-2*m,ph*3-2*m,pen)
+        photos={p.id:p for p in job.photos}
         for r in job.placements:
             if r.page!=page or r.photo_id not in images:continue
-            self.scene().addItem(PrintItem(images[r.photo_id],r,pw,ph,self.changed.emit))
+            self.scene().addItem(PrintItem(images[r.photo_id],r,pw,ph,self.changed.emit,job.print_settings.get('margin',0) if job.print_settings.get('enforce_margins') else 0,photos[r.photo_id] if vector_borders else None))
             if job.print_settings.get('guides'):
                 guide=QPen(QColor('#808080'));guide.setWidthF(.3)
                 for x,y,sx,sy in [(r.x,r.y,-1,-1),(r.x+r.width,r.y,1,-1),(r.x,r.y+r.height,-1,1),(r.x+r.width,r.y+r.height,1,1)]:

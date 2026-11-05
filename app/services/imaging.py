@@ -35,10 +35,41 @@ def find_background_model(model_dir=None):
             if model.is_file() and model.stat().st_size>1000000:return model
     raise ValueError('Background model not found. Open Settings to install the portrait model, or keep the models folder supplied with the application.')
 
-def remove_background(source,model_dir,cache_dir,force=False):
+def refine_alpha(image,alpha):
+    """Small guided matte refinement, using source luminance to retain real edges."""
+    import cv2
+    import numpy as np
+    guide=np.asarray(image.convert('L'),dtype=np.float32)/255
+    matte=np.asarray(alpha,dtype=np.float32)/255
+    mean=lambda value:cv2.boxFilter(value,-1,(7,7),borderType=cv2.BORDER_REFLECT)
+    mi,mp=mean(guide),mean(matte)
+    a=(mean(guide*matte)-mi*mp)/(mean(guide*guide)-mi*mi+.001)
+    b=mp-a*mi
+    result=np.clip(mean(a)*guide+mean(b),0,1)
+    # Keep confident foreground/background unchanged; refine only uncertain edges.
+    result=np.where((matte>.02)&(matte<.98),result,matte)
+    return Image.fromarray(np.round(result*255).astype(np.uint8))
+
+
+def reduce_halo(image,amount):
+    """Optional edge-color cleanup using neighboring opaque foreground colors."""
+    import cv2
+    import numpy as np
+    rgba=np.asarray(image,dtype=np.float32);alpha=rgba[:,:,3:4]/255
+    core=(alpha>.95).astype(np.float32)
+    weights=cv2.GaussianBlur(core,(0,0),3)
+    if weights.ndim==2:weights=weights[:,:,None]
+    colors=cv2.GaussianBlur(rgba[:,:,:3]*core,(0,0),3)/np.maximum(weights,.0001)
+    blend=np.clip(float(amount),0,1)*(1-alpha)*((alpha>.02)&(alpha<.98)&(weights>.01))
+    rgba[:,:,:3]=rgba[:,:,:3]*(1-blend)+colors*blend
+    return Image.fromarray(np.clip(rgba,0,255).astype(np.uint8))
+
+
+def remove_background(source,model_dir,cache_dir,force=False,quality='balanced'):
     global _session
     model=find_background_model(model_dir)
-    stamp=f'{Path(source).resolve()}:{Path(source).stat().st_mtime_ns}:{model.resolve()}:{model.stat().st_mtime_ns}'
+    if quality not in ('fast','balanced','fine'):raise ValueError('Choose fast, balanced, or fine processing quality.')
+    stamp=f'{Path(source).resolve()}:{Path(source).stat().st_mtime_ns}:{model.resolve()}:{model.stat().st_mtime_ns}:{quality}'
     target=Path(cache_dir)/(hashlib.sha256(stamp.encode()).hexdigest()+'.png')
     if target.exists() and not force: return str(target)
     with _lock:
@@ -48,7 +79,7 @@ def remove_background(source,model_dir,cache_dir,force=False):
         if _session is None or _session[0]!=session_key:
             options=ort.SessionOptions();options.intra_op_num_threads=4;options.inter_op_num_threads=1
             _session=(session_key,ort.InferenceSession(str(model),sess_options=options,providers=['CPUExecutionProvider']))
-        result=load_image(source,4000)
+        result=load_image(source,2000 if quality=='fast' else 4000)
         sample=np.asarray(result.convert('RGB').resize((320,320),Image.Resampling.LANCZOS),dtype=np.float32)
         sample/=max(float(sample.max()),1e-6)
         sample=(sample-np.array([.485,.456,.406],dtype=np.float32))/np.array([.229,.224,.225],dtype=np.float32)
@@ -57,6 +88,7 @@ def remove_background(source,model_dir,cache_dir,force=False):
         low,high=float(prediction.min()),float(prediction.max())
         normalized=(prediction-low)/(high-low) if high-low>1e-8 else np.clip(prediction,0,1)
         alpha=Image.fromarray(np.round(normalized*255).astype(np.uint8)).resize(result.size,Image.Resampling.LANCZOS)
+        if quality=='fine':alpha=refine_alpha(result,alpha)
         from PIL import ImageChops
         result.putalpha(ImageChops.multiply(result.getchannel('A'),alpha))
         target.parent.mkdir(parents=True,exist_ok=True)
@@ -87,6 +119,7 @@ def prepare_layer(layer,before=False,limit=6000):
             value=getattr(layer,field)
             if value!=1:rgb=enhancer(rgb).enhance(value)
         im=rgb.convert('RGBA');im.putalpha(alpha)
+        if layer.defringe:im=reduce_halo(im,layer.defringe)
     if layer.flip_h:im=ImageOps.mirror(im)
     if layer.flip_v:im=ImageOps.flip(im)
     return im
@@ -94,15 +127,41 @@ def prepare_layer(layer,before=False,limit=6000):
 def render_photo(photo,dpi=300,before=False):
     photo.validate()
     size=(max(1,round(photo.width/25.4*dpi)),max(1,round(photo.height/25.4*dpi)))
+    if size[0]*size[1]>50_000_000:raise ValueError('The requested image exceeds 50 megapixels. Reduce its dimensions or render DPI before exporting.')
     canvas=Image.new('RGBA',size,photo.background)
     for layer in photo.layers:
         if not layer.visible:continue
         im=prepare_layer(layer,before)
         fit=max(size[0]/im.width,size[1]/im.height)*layer.scale
         if layer.rotation:im=im.rotate(layer.rotation,Image.Resampling.BICUBIC,expand=True)
-        im=im.resize((max(1,round(im.width*fit)),max(1,round(im.height*fit))),Image.Resampling.LANCZOS)
+        layer_size=(max(1,round(im.width*fit)),max(1,round(im.height*fit)))
+        if layer_size[0]*layer_size[1]>100_000_000:raise ValueError('This layer is enlarged beyond the safe rendering limit. Reduce its zoom before exporting.')
+        im=im.resize(layer_size,Image.Resampling.LANCZOS)
         canvas.alpha_composite(im,(round(layer.x*size[0]-im.width/2),round(layer.y*size[1]-im.height/2)))
     return canvas.convert('RGB')
+
+
+def render_bordered_photo(photo,dpi=300):
+    """Shared preview/image-export border; PDF uses the same inside geometry."""
+    im=render_photo(photo,dpi)
+    if photo.border and photo.border_mm:
+        ImageDraw.Draw(im).rectangle((0,0,im.width-1,im.height-1),outline=photo.border_color,width=max(1,round(photo.border_mm/25.4*dpi)))
+    return im
+
+
+def export_photo_image(photo,path,dpi=300):
+    import os
+    import tempfile
+    target=Path(path);target.parent.mkdir(parents=True,exist_ok=True)
+    if target.suffix.lower() not in ('.png','.jpg','.jpeg'):raise ValueError('Choose PNG or JPEG for the edited photograph.')
+    fd,tmp=tempfile.mkstemp(suffix=target.suffix,dir=target.parent);os.close(fd)
+    try:
+        im=render_bordered_photo(photo,dpi)
+        im.save(tmp,dpi=(dpi,dpi),**({'quality':95} if target.suffix.lower() in ('.jpg','.jpeg') else {}))
+        os.replace(tmp,target)
+    finally:
+        if Path(tmp).exists():Path(tmp).unlink()
+    return str(target)
 
 def face_position(layer,width,height):
     import cv2

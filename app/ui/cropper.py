@@ -4,7 +4,7 @@ from pathlib import Path
 from PIL import Image
 from PySide6.QtCore import Qt,Signal,QRectF,QPointF,QSize
 from PySide6.QtGui import QColor,QPen,QPolygonF,QPainter
-from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QComboBox,QListWidget,QListWidgetItem,QAbstractItemView,QGraphicsView,QGraphicsScene,QGraphicsItem,QGraphicsPolygonItem,QGraphicsEllipseItem,QGraphicsSimpleTextItem,QDialog,QDialogButtonBox,QFileDialog,QLineEdit,QInputDialog)
+from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QComboBox,QListWidget,QListWidgetItem,QAbstractItemView,QGraphicsView,QGraphicsScene,QGraphicsItem,QGraphicsPolygonItem,QGraphicsEllipseItem,QGraphicsSimpleTextItem,QDialog,QDialogButtonBox,QFileDialog,QLineEdit,QInputDialog,QTabWidget)
 from app.services.imaging import load_image,import_info
 from app.services.cropping import CropRegion,detect_photo_regions,extract_region,orient_portrait
 from app.ui.canvas import pixmap
@@ -24,6 +24,8 @@ class CropOutline(QGraphicsPolygonItem):
         pen=QPen(QColor('#236b5a'),2);pen.setCosmetic(True);self.setPen(pen);self.setBrush(QColor(35,107,90,24));self.setFlags(QGraphicsItem.ItemIsMovable|QGraphicsItem.ItemIsSelectable);self.setZValue(2);self.handles=[]
         for i,(x,y) in enumerate(region.points):
             handle=Corner(self,i,radius);handle.setPos(x,y);handle.ready=True;handle.hide();self.handles.append(handle)
+        for i in range(4):
+            first,second=QPointF(*region.points[i]),QPointF(*region.points[(i+1)%4]);handle=Corner(self,i+4,radius*.8);handle.setPos((first+second)/2);handle.ready=True;handle.hide();self.handles.append(handle)
     def itemChange(self,change,value):
         if change==QGraphicsItem.ItemSelectedHasChanged:
             for h in getattr(self,'handles',[]):h.setVisible(bool(value))
@@ -32,7 +34,13 @@ class CropOutline(QGraphicsPolygonItem):
         super().mousePressEvent(e);self.selected_callback(self.index)
     def corner_moved(self,index,point):
         if self.updating:return
-        polygon=self.polygon();polygon[index]=point;self.setPolygon(polygon)
+        polygon=self.polygon()
+        if index<4:polygon[index]=point
+        else:
+            first=index-4;second=(first+1)%4;delta=point-(polygon[first]+polygon[second])/2;polygon[first]+=delta;polygon[second]+=delta
+        self.setPolygon(polygon);self.updating=True
+        for i,h in enumerate(self.handles):h.setPos(polygon[i] if i<4 else (polygon[i-4]+polygon[(i-3)%4])/2)
+        self.updating=False
     def commit(self):
         w,h=self.bounds;points=[self.mapToScene(p) for p in self.polygon()]
         self.region.points=[(max(0,min(w-1,p.x())),max(0,min(h-1,p.y()))) for p in points];self.changed_callback(self.index)
@@ -92,8 +100,8 @@ class PreparedPicker(QDialog):
         super().accept()
     def filter(self,text):
         from PySide6.QtGui import QIcon
-        matches=[p for p in self.tray.items if text.lower() in p.display_name.lower()];self.list.blockSignals(True);self.list.clear()
-        for p in matches[-200:]:
+        matches=self.tray.query(text);self.list.blockSignals(True);self.list.clear()
+        for p in matches:
             w,h=p.size;item=QListWidgetItem(QIcon(pixmap(p.thumbnail())),p.display_name+f'   ·   {w} × {h} px');item.setData(Qt.UserRole,p.id)
             if max(self.counts)>1:item.setFlags(item.flags()|Qt.ItemIsUserCheckable);item.setCheckState(Qt.Checked if p.id in self.checked else Qt.Unchecked)
             self.list.addItem(item)
@@ -106,19 +114,25 @@ class PreparedPicker(QDialog):
 
 class Cropper(QWidget):
     def __init__(self,tray,run,notify,use,parent=None):
-        super().__init__(parent);self.tray=tray;self.run=run;self.notify=notify;self.use=use;self.source_paths=[];self.current_image=None;self.current_path='';self.regions=[];self.source_states={};self.updating=False
+        super().__init__(parent);self.tray=tray;self.run=run;self.notify=notify;self.use=use;self.source_paths=[];self.current_image=None;self.current_path='';self.regions=[];self.source_states={};self.updating=False;self.crop_undo={};self.crop_redo={};self.last_regions=[]
         self.setStyleSheet('QPushButton {padding:6px 9px;font-size:12px;}')
         layout=QVBoxLayout(self);layout.setContentsMargins(0,0,0,0);header=QLabel('Cropper');header.setObjectName('title');layout.addWidget(header)
         layout.addWidget(QLabel('Import a scan sheet or camera photo. Separate each person, then keep their crop in the tray.'))
         row=QHBoxLayout();self.button('Import images / scan sheets',self.import_sources,row);self.sources=QComboBox();self.sources.currentIndexChanged.connect(self.select_source);row.addWidget(self.sources,1);self.button('Auto-detect photos',self.detect,row);self.button('Use whole image',self.full_image,row);self.button('Fit sheet',lambda:self.canvas.fitInView(self.canvas.sceneRect(),Qt.KeepAspectRatio),row);layout.addLayout(row)
         body=QHBoxLayout();layout.addLayout(body,1);self.canvas=CropCanvas();self.canvas.selected.connect(self.select_region);self.canvas.changed.connect(self.region_changed);self.canvas.drawn.connect(self.add_region);body.addWidget(self.canvas,1)
-        side=QVBoxLayout();side.setSpacing(6);body.addLayout(side);side.addWidget(QLabel('Crop regions · drag corners to adjust'))
-        self.region_list=QListWidget();self.region_list.setMaximumHeight(100);self.region_list.setMinimumHeight(60);self.region_list.setFixedWidth(300);self.region_list.currentRowChanged.connect(self.canvas.select_region);side.addWidget(self.region_list)
+        self.side_tabs=QTabWidget();self.side_tabs.setMinimumWidth(330);self.side_tabs.setMaximumWidth(420);body.addWidget(self.side_tabs);region_panel=QWidget();self.side_tabs.addTab(region_panel,'Crop regions');side=QVBoxLayout(region_panel);side.setSpacing(8);side.addWidget(QLabel('Move corners or edge handles to refine a crop.'))
+        self.region_list=QListWidget();self.region_list.setMinimumHeight(100);self.region_list.currentRowChanged.connect(self.canvas.select_region);side.addWidget(self.region_list,1)
         row=QHBoxLayout();self.button('Rotate left',lambda:self.rotate(90),row);self.button('Rotate right',lambda:self.rotate(-90),row);self.button('Delete',self.remove_region,row);side.addLayout(row)
+        row=QHBoxLayout();self.button('Undo crop',self.undo_crop,row);self.button('Redo crop',self.redo_crop,row);self.button('Preview crop',self.preview_crop,row);side.addLayout(row)
         row=QHBoxLayout();self.button('Keep selected crop',self.keep_selected,row);self.button('Keep all crops',self.keep_all,row);side.addLayout(row)
+        library_panel=QWidget();self.side_tabs.addTab(library_panel,'Saved library');side=QVBoxLayout(library_panel);side.setSpacing(8)
         self.tray_label=QLabel('Saved library · 0 photos');row=QHBoxLayout();row.addWidget(self.tray_label,1);self.button('Rename',self.rename_photo,row);self.button('Remove',self.remove_from_tray,row);side.addLayout(row)
         self.search=QLineEdit();self.search.setPlaceholderText('Find serial number or name');self.search.textChanged.connect(self.filter_tray);side.addWidget(self.search)
+        row=QHBoxLayout();self.sort=QComboBox();self.sort.addItems(['Newest first','Oldest first','Serial ascending']);self.sort.currentIndexChanged.connect(lambda:self.filter_tray(self.search.text()));row.addWidget(self.sort);self.kind_filter=QComboBox();self.kind_filter.addItems(['All','Individual','Joint']);self.kind_filter.currentTextChanged.connect(lambda:self.filter_tray(self.search.text()));row.addWidget(self.kind_filter);side.addLayout(row)
+        row=QHBoxLayout();self.deleted=QComboBox();self.deleted.addItems(['Available photos','Removed photos']);self.deleted.currentIndexChanged.connect(lambda:self.filter_tray(self.search.text()));row.addWidget(self.deleted);self.button('Restore selected',self.restore_selected,row);side.addLayout(row)
         self.tray_list=QListWidget();self.tray_list.setSelectionMode(QAbstractItemView.ExtendedSelection);self.tray_list.setViewMode(QListWidget.IconMode);self.tray_list.setResizeMode(QListWidget.Adjust);self.tray_list.setGridSize(QSize(92,105));self.tray_list.setIconSize(QSize(58,70));side.addWidget(self.tray_list,1)
+        self.tray_list.itemDoubleClicked.connect(lambda _:self.preview_library())
+        row=QHBoxLayout();self.button('Mark individual',lambda:self.mark_kind('Individual'),row);self.button('Mark joint',lambda:self.mark_kind('Joint'),row);side.addLayout(row)
         row=QHBoxLayout();self.button('Portrait print →',lambda:self.use_selected('portrait'),row);self.button('Joint print →',lambda:self.use_selected('joint'),row);side.addLayout(row)
         self.hint=QLabel('Wheel to zoom; double-click a region to inspect it. Drag an empty area to draw a crop. Imported sources and numbered crops are saved automatically.');self.hint.setWordWrap(True);layout.addWidget(self.hint)
         self.restore_sources();self.refresh_tray()
@@ -158,30 +172,42 @@ class Cropper(QWidget):
             if not regions:regions=[CropRegion([(0,0),(image.width-1,0),(image.width-1,image.height-1),(0,image.height-1)])]
             return image,regions
         def done(result):
-            self.current_path=path;self.current_image,self.regions=result;self.refresh_regions();self.notify(f'{len(self.regions)} crop regions found. Check their edges before keeping them.')
+            self.current_path=path;self.current_image,self.regions=result;self.refresh_regions();self.side_tabs.setCurrentIndex(0);self.notify(f'{len(self.regions)} crop regions found. Check their edges before keeping them.')
         self.run(load,done)
     def refresh_regions(self,selected=0):
-        if self.current_path:self.tray.save_regions(self.current_path,self.regions)
+        if self.current_path:self.tray.save_regions(self.current_path,self.regions);self.source_states[self.current_path]=copy.deepcopy(self.regions)
+        self.last_regions=copy.deepcopy(self.regions)
         self.region_list.blockSignals(True);self.region_list.clear();self.region_list.addItems([f'Crop {i+1}'+(f' · rotate {r.rotation}°' if r.rotation else '') for i,r in enumerate(self.regions)]);self.region_list.setCurrentRow(min(selected,len(self.regions)-1));self.region_list.blockSignals(False)
         if self.current_image:self.canvas.display(self.current_image,self.regions,self.region_list.currentRow())
     def select_region(self,index):self.region_list.setCurrentRow(index)
     def region_changed(self,index):
+        self.crop_checkpoint(self.last_regions)
         if self.current_path:self.source_states[self.current_path]=copy.deepcopy(self.regions);self.tray.save_regions(self.current_path,self.regions)
+        self.last_regions=copy.deepcopy(self.regions)
         self.hint.setText(f'Crop {index+1} adjusted. Keep it when the corners match the photograph.')
-    def add_region(self,region):self.regions.append(region);self.refresh_regions(len(self.regions)-1)
+    def crop_checkpoint(self,regions=None):
+        if not self.current_path:return
+        stack=self.crop_undo.setdefault(self.current_path,[]);stack.append(copy.deepcopy(self.regions if regions is None else regions));del stack[:-50];self.crop_redo[self.current_path]=[]
+    def undo_crop(self):
+        stack=self.crop_undo.get(self.current_path,[])
+        if stack:self.crop_redo.setdefault(self.current_path,[]).append(copy.deepcopy(self.regions));self.regions=stack.pop();self.refresh_regions()
+    def redo_crop(self):
+        stack=self.crop_redo.get(self.current_path,[])
+        if stack:self.crop_undo.setdefault(self.current_path,[]).append(copy.deepcopy(self.regions));self.regions=stack.pop();self.refresh_regions()
+    def add_region(self,region):self.crop_checkpoint();self.regions.append(region);self.refresh_regions(len(self.regions)-1)
     def remove_region(self):
         i=self.region_list.currentRow()
-        if i>=0:self.regions.pop(i);self.refresh_regions(max(0,i-1))
+        if i>=0:self.crop_checkpoint();self.regions.pop(i);self.refresh_regions(max(0,i-1))
     def rotate(self,angle):
         i=self.region_list.currentRow()
-        if i>=0:self.regions[i].rotation=(self.regions[i].rotation+angle)%360;self.refresh_regions(i)
+        if i>=0:self.crop_checkpoint();self.regions[i].rotation=(self.regions[i].rotation+angle)%360;self.refresh_regions(i)
     def full_image(self):
         if self.current_image:
             w,h=self.current_image.size;self.add_region(CropRegion([(0,0),(w-1,0),(w-1,h-1),(0,h-1)]))
     def detect(self):
         if not self.current_image:return
         image=self.current_image
-        def done(regions):self.regions=regions;self.refresh_regions();self.notify(f'{len(regions)} regions detected. Draw any missing crops manually.')
+        def done(regions):self.crop_checkpoint();self.regions=regions;self.refresh_regions();self.notify(f'{len(regions)} regions detected. Draw any missing crops manually.')
         self.run(lambda:detect_photo_regions(image),done)
     def keep_selected(self):
         i=self.region_list.currentRow()
@@ -202,7 +228,7 @@ class Cropper(QWidget):
                 return len(result)
             return result
         def done(rows):
-            if isinstance(rows,int):self.refresh_tray();self.notify(f'{rows} numbered photos saved to your library.');return
+            if isinstance(rows,int):self.refresh_tray();self.side_tabs.setCurrentIndex(1);self.notify(f'{rows} numbered photos saved to your library.');return
             total=sum(p.image.width*p.image.height for p in self.tray.items)+sum(im.width*im.height for _,im in rows)
             if total>self.tray.max_pixels:raise ValueError('The crop tray is full. Remove unused crops first.')
             for name,image in rows:self.tray.add(name,image,path)
@@ -212,16 +238,36 @@ class Cropper(QWidget):
         self.tray_label.setText(f'Saved library · {len(self.tray.items)} photos');self.filter_tray(self.search.text())
     def filter_tray(self,text):
         from PySide6.QtGui import QIcon
-        self.tray_list.clear();matches=[p for p in self.tray.items if text.lower() in p.display_name.lower()]
-        for p in matches[-200:]:
-            item=QListWidgetItem(QIcon(pixmap(p.thumbnail((58,70)))),p.display_name);item.setData(Qt.UserRole,p.id);item.setToolTip(p.display_name);self.tray_list.addItem(item)
+        self.tray_list.clear();matches=self.tray.query(text,'newest' if self.sort.currentIndex()==0 else 'oldest',self.kind_filter.currentText(),self.deleted.currentIndex()==1)
+        for p in matches:
+            item=QListWidgetItem(QIcon(pixmap(p.thumbnail((58,70)))),p.display_name);item.setData(Qt.UserRole,p.id);item.setToolTip(p.display_name+' · '+p.kind+(' · Removed (recoverable)' if self.deleted.currentIndex()==1 else ' · Available')+' · Double-click to preview');self.tray_list.addItem(item)
+        self.visible_items={p.id:p for p in matches}
     def rename_photo(self):
         selected=self.tray_list.selectedItems()
         if len(selected)!=1:self.notify('Select one library photo to rename.');return
-        item=next(p for p in self.tray.items if p.id==selected[0].data(Qt.UserRole));name,ok=QInputDialog.getText(self,'Rename photo','Photo name',text=item.name)
+        id=selected[0].data(Qt.UserRole);item=next((p for p in self.tray.items if p.id==id),self.visible_items[id]);name,ok=QInputDialog.getText(self,'Rename photo','Photo name',text=item.name)
         if ok and name.strip():self.tray.rename(item,name);self.refresh_tray()
     def remove_from_tray(self):self.tray.remove({i.data(Qt.UserRole) for i in self.tray_list.selectedItems()});self.refresh_tray()
+    def restore_selected(self):self.tray.restore_items({i.data(Qt.UserRole) for i in self.tray_list.selectedItems()});self.refresh_tray()
+    def mark_kind(self,kind):self.tray.set_kind({i.data(Qt.UserRole) for i in self.tray_list.selectedItems()},kind);self.refresh_tray()
+    def show_preview(self,image,title):
+        dialog=QDialog(self);dialog.setWindowTitle(title);layout=QVBoxLayout(dialog);label=QLabel();label.setAlignment(Qt.AlignCenter);label.setPixmap(pixmap(image));layout.addWidget(label);buttons=QDialogButtonBox(QDialogButtonBox.Close);buttons.rejected.connect(dialog.reject);layout.addWidget(buttons);dialog.resize(image.width+40,image.height+80);dialog.exec()
+    def preview_crop(self):
+        index=self.region_list.currentRow()
+        if self.current_image is None or index<0:return
+        image=self.current_image;region=copy.deepcopy(self.regions[index])
+        def preview():
+            im=extract_region(image,region);im.thumbnail((800,650));return im
+        self.run(preview,lambda im:self.show_preview(im,f'Crop {index+1} · preview before saving'))
+    def preview_library(self):
+        selected=self.tray_list.selectedItems()
+        if len(selected)!=1:return
+        item=self.visible_items[selected[0].data(Qt.UserRole)]
+        def preview():
+            im=item.image;im.thumbnail((850,650));return im
+        self.run(preview,lambda im:self.show_preview(im,item.display_name+' · '+item.kind))
     def use_selected(self,mode):
+        if self.deleted.currentIndex()==1:self.notify('Restore removed photos before using them in a new job. Existing saved jobs remain available.');return
         ids={i.data(Qt.UserRole) for i in self.tray_list.selectedItems()};items=[p for p in self.tray.items if p.id in ids];count=1 if mode=='portrait' else 2
         if len(items) not in ((1,) if mode=='portrait' else (1,2)):self.notify('Select one portrait, or one combined/two separate photos for joint print.');return
         self.use(mode,items)

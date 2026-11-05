@@ -24,7 +24,7 @@ def frame_photo(photo,mode='auto'):
         elif mode=='fit':factor=min(W/w,H/h);cx,cy=w/2,h/2;tx,ty=W/2,H/2
         elif combined:
             # Preserve all heads as a group; place shoulders at the bottom edge.
-            factor=min(W*.99/fw,H*1.01/fh);cx=(left+right)/2;cy=bottom;tx,ty=W/2,H*1.01
+            factor=min(W*.98/fw,H*.98/fh);cx=(left+right)/2;cy=bottom;tx,ty=W/2,H*.99
         else:
             factor=H*.98/max(1,fh);cx=(left+right)/2;cy=bottom;ty=H*1.01
             tx=W/2 if len(layers)==1 else W*(index+.5)/len(layers)
@@ -47,7 +47,14 @@ def align_layers(photo,action):
     active=[l for l in photo.layers if l.visible and not l.locked]
     if not active:return photo
     if action=='center':
-        for l in active:l.x=.5
+        bounds=[]
+        for l in active:
+            im=prepare_layer(l,limit=1600);factor=max(photo.width/im.width,photo.height/im.height)*l.scale
+            if l.rotation:im=im.rotate(l.rotation,expand=True)
+            box=im.getchannel('A').getbbox() or (0,0,*im.size)
+            bounds.append((l.x*photo.width+(box[0]-im.width/2)*factor,l.x*photo.width+(box[2]-im.width/2)*factor))
+        delta=(photo.width/2-(min(a for a,_ in bounds)+max(b for _,b in bounds))/2)/photo.width
+        for l in active:l.x+=delta
     elif action=='bottom':
         for l in active:
             im=prepare_layer(l,limit=1600);factor=max(photo.width/im.width,photo.height/im.height)*l.scale

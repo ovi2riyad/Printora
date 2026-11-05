@@ -3,7 +3,7 @@ import pytest
 from PIL import Image
 from pypdf import PdfReader
 from app.models.domain import Photo,Layer,Job
-from app.core.database import Database
+from app.core.database import Database,starter_profiles
 from app.services.layout import mm_to_pt,auto_layout,validate_layout,page_size
 from app.services.imaging import import_info,render_photo,remove_background
 from app.services.pdf import export_pdf,calibration_pdf
@@ -83,10 +83,10 @@ def test_pdf_exact_dimensions_and_border(source,tmp_path):
     one=tmp_path/'one.pdf';export_pdf(j,one,current_page=0);assert len(PdfReader(one).pages)==1
 
 def test_profile_and_job_roundtrip(tmp_path,source):
-    db=Database(tmp_path/'studio.db');profiles=db.profiles();assert len(profiles)==8
-    p=dict(profiles[0],name='Custom test',width=60,height=40);db.save_profile(p)
+    db=Database(tmp_path/'studio.db');profiles=db.profiles();assert len(profiles)==len(starter_profiles())
+    p=dict(profiles[0],name='Custom test',width=60,height=40,kind='Joint');db.save_profile(p)
     db.set('theme','Light');j=job_with([Photo(layers=[Layer(source)],quantity=8)]);db.save_job(j);db.conn.close()
-    db=Database(tmp_path/'studio.db');assert db.get('theme')=='Light';assert next(p for p in db.profiles() if p['name']=='Custom test')['width']==60;assert db.load_job(j.id).to_dict()==j.to_dict();db.delete_profile('Custom test');assert len(db.profiles())==8;db.conn.close()
+    db=Database(tmp_path/'studio.db');assert db.get('theme')=='Light';assert next(p for p in db.profiles() if p['name']=='Custom test')['width']==60;assert db.load_job(j.id).to_dict()==j.to_dict();db.delete_profile('Custom test');assert len(db.profiles())==len(starter_profiles());db.conn.close()
 
 def test_missing_sources_and_model(tmp_path,monkeypatch):
     monkeypatch.setenv('LOCALAPPDATA',str(tmp_path))

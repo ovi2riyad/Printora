@@ -25,6 +25,7 @@ class Layer:
     saturation: float = 1.0
     sharpness: float = 1.0
     mask_strokes: list = field(default_factory=list)
+    defringe: float = 0.0
 
 @dataclass
 class Photo:

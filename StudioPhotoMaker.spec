@@ -9,7 +9,8 @@ for package in ('onnxruntime',):
     datas+=d; binaries+=b; hiddenimports+=h
 datas+=collect_data_files('cv2')
 portrait_model=Path(os.environ.get('LOCALAPPDATA',''))/'StudioPhotoMaker'/'models'/'u2net_human_seg.onnx'
-if portrait_model.is_file():datas.append((str(portrait_model),'models'))
+if not portrait_model.is_file():raise SystemExit('Portrait model missing. Install it with python -m scripts.install_model before building the offline release.')
+datas.append((str(portrait_model),'models'))
 a=Analysis(['main.py'],pathex=['.'],binaries=binaries,datas=datas,hiddenimports=hiddenimports,excludes=['tkinter','PySide6.QtWebEngineCore','PySide6.QtWebEngineWidgets','IPython','matplotlib','rembg','pymatting','numba','scipy','skimage'])
 pyz=PYZ(a.pure)
 exe=EXE(pyz,a.scripts,[],exclude_binaries=True,name='StudioPhotoMaker',console=False)

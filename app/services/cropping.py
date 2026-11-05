@@ -1,4 +1,4 @@
-"""Local sheet splitting, perspective crops and an in-memory prepared-photo tray."""
+"""Local sheet splitting, perspective crops, and a persistent numbered photo library."""
 from dataclasses import dataclass,field
 from pathlib import Path
 import uuid
@@ -25,6 +25,7 @@ class PreparedPhoto:
     serial: int = 0
     thumb: str = ''
     dimensions: tuple = (0,0)
+    kind: str = 'Individual'
 
     @property
     def image(self):
@@ -47,33 +48,66 @@ class PreparedPhoto:
 
 class CropTray:
     def __init__(self,max_pixels=120_000_000,root=None):
-        self.items=[];self.max_pixels=max_pixels;self.root=Path(root) if root else None;self.lock=threading.RLock();self.conn=None
+        self.items=[];self.max_pixels=max_pixels;self.root=Path(root) if root else None;self.lock=threading.RLock();self.conn=None;self.next_serial=1;self.hidden=[]
         if self.root:
             self.root.mkdir(parents=True,exist_ok=True)
             self.conn=sqlite3.connect(self.root/'library.db',check_same_thread=False)
             self.conn.execute('PRAGMA journal_mode=WAL')
             self.conn.executescript('CREATE TABLE IF NOT EXISTS photos(serial INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE,name TEXT,source TEXT,asset TEXT,thumb TEXT,width INTEGER,height INTEGER,deleted INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS sources(serial INTEGER PRIMARY KEY AUTOINCREMENT,digest TEXT UNIQUE,name TEXT,asset TEXT); CREATE TABLE IF NOT EXISTS source_regions(asset TEXT PRIMARY KEY,payload TEXT);')
-            for serial,id,name,source,asset,thumb,w,h in self.conn.execute('SELECT serial,id,name,source,asset,thumb,width,height FROM photos WHERE deleted=0 ORDER BY serial'):
-                self.items.append(PreparedPhoto(name,None,source,id,asset,serial,thumb,(w,h)))
-    def add(self,name,image,source=''):
+            columns={row[1] for row in self.conn.execute('PRAGMA table_info(photos)')}
+            if 'kind' not in columns:
+                with self.conn:
+                    self.conn.execute("ALTER TABLE photos ADD COLUMN kind TEXT NOT NULL DEFAULT 'Individual'")
+                    self.conn.execute("UPDATE photos SET kind='Joint' WHERE width>height OR lower(name) LIKE 'joint%'")
+                    self.conn.execute('PRAGMA user_version=2')
+            for serial,id,name,source,asset,thumb,w,h,kind in self.conn.execute('SELECT serial,id,name,source,asset,thumb,width,height,kind FROM photos WHERE deleted=0 ORDER BY serial'):
+                self.items.append(PreparedPhoto(name,None,source,id,asset,serial,thumb,(w,h),kind))
+    def add(self,name,image,source='',kind=None):
         if self.conn is None and sum(p.image.width*p.image.height for p in self.items)+image.width*image.height>self.max_pixels:
             raise ValueError('The crop tray is full. Remove unused crops before adding more.')
-        item=PreparedPhoto(name,image.copy() if self.conn is None else None,source,dimensions=image.size)
+        kind=kind or ('Joint' if image.width>image.height or name.lower().startswith('joint') else 'Individual')
+        item=PreparedPhoto(name,image.copy() if self.conn is None else None,source,dimensions=image.size,kind=kind)
         if self.conn:
             with self.lock,self.conn:
-                cursor=self.conn.execute('INSERT INTO photos(id,name,source,asset,thumb,width,height) VALUES(?,?,?,?,?,?,?)',(item.id,name,source,'','',image.width,image.height));item.serial=cursor.lastrowid
+                cursor=self.conn.execute('INSERT INTO photos(id,name,source,asset,thumb,width,height,kind) VALUES(?,?,?,?,?,?,?,?)',(item.id,name,source,'','',image.width,image.height,kind));item.serial=cursor.lastrowid
                 folder=self.root/'photos';folder.mkdir(exist_ok=True);path=folder/(f'{item.serial:06d}_'+item.id+'.png');tmp=path.with_suffix('.tmp');thumb=path.with_suffix('.thumb.jpg')
                 try:
                     image.save(tmp,format='PNG');tmp.replace(path);small=image.convert('RGB');small.thumbnail((180,210));small.save(thumb,quality=90)
                     item.asset=str(path);item.thumb=str(thumb);self.conn.execute('UPDATE photos SET asset=?,thumb=? WHERE id=?',(item.asset,item.thumb,item.id))
                 finally:
                     if tmp.exists():tmp.unlink()
-        else:item.serial=max((p.serial for p in self.items),default=0)+1
+        else:item.serial=self.next_serial;self.next_serial+=1
         self.items.append(item);return item
     def remove(self,ids):
         if self.conn:
             with self.lock,self.conn:self.conn.executemany('UPDATE photos SET deleted=1 WHERE id=?',[(id,) for id in ids])
-        self.items[:]=[p for p in self.items if p.id not in ids]
+        self.hidden.extend(p for p in self.items if p.id in ids);self.items[:]=[p for p in self.items if p.id not in ids]
+    def restore_items(self,ids):
+        if self.conn:
+            restored=[p for p in self.query(deleted=True,limit=None) if p.id in ids]
+            with self.lock,self.conn:self.conn.executemany('UPDATE photos SET deleted=0 WHERE id=?',[(id,) for id in ids])
+        else:restored=[p for p in self.hidden if p.id in ids]
+        self.items.extend(restored);self.items.sort(key=lambda p:p.serial);self.hidden[:]=[p for p in self.hidden if p.id not in ids]
+    def set_kind(self,ids,kind):
+        if kind not in ('Individual','Joint'):raise ValueError('Choose Individual or Joint.')
+        if self.conn:
+            with self.lock,self.conn:self.conn.executemany('UPDATE photos SET kind=? WHERE id=?',[(kind,id) for id in ids])
+        for item in self.items:
+            if item.id in ids:item.kind=kind
+    def query(self,text='',sort='newest',kind='All',deleted=False,limit=200):
+        """Bounded metadata search; never decode full photos while browsing."""
+        if self.conn:
+            sql='SELECT serial,id,name,source,asset,thumb,width,height,kind FROM photos WHERE deleted=?'
+            parameters=[int(deleted)]
+            if text:sql+=" AND instr(lower(printf('#%06d',serial)||' '||name),lower(?))>0";parameters.append(text)
+            if kind in ('Individual','Joint'):sql+=' AND kind=?';parameters.append(kind)
+            sql+=' ORDER BY serial '+('DESC' if sort=='newest' else 'ASC')
+            if limit is not None:sql+=' LIMIT ?';parameters.append(limit)
+            with self.lock:rows=self.conn.execute(sql,parameters).fetchall()
+            return [PreparedPhoto(name,None,source,id,asset,serial,thumb,(w,h),category) for serial,id,name,source,asset,thumb,w,h,category in rows]
+        rows=[p for p in (self.hidden if deleted else self.items) if text.lower() in p.display_name.lower() and (kind=='All' or p.kind==kind)]
+        rows.sort(key=lambda p:p.serial,reverse=sort=='newest')
+        return rows if limit is None else rows[:limit]
     def rename(self,item,name):
         name=name.strip()
         if not name:raise ValueError('Enter a photo name.')
@@ -84,13 +118,17 @@ class CropTray:
         if not self.conn:return str(Path(path).resolve())
         with open(path,'rb') as stream:digest=hashlib.file_digest(stream,'sha256').hexdigest()
         with self.lock,self.conn:
-            row=self.conn.execute('SELECT asset FROM sources WHERE digest=?',(digest,)).fetchone()
+            row=self.conn.execute('SELECT asset,serial FROM sources WHERE digest=?',(digest,)).fetchone()
             if row and Path(row[0]).exists():return row[0]
             folder=self.root/'sources';folder.mkdir(exist_ok=True);target=folder/(digest+Path(path).suffix.lower());tmp=target.with_suffix('.tmp')
             try:shutil.copyfile(path,tmp);tmp.replace(target)
             finally:
                 if tmp.exists():tmp.unlink()
-            self.conn.execute('INSERT OR REPLACE INTO sources(digest,name,asset) VALUES(?,?,?)',(digest,Path(path).name,str(target)));return str(target)
+            if row:
+                self.conn.execute('UPDATE sources SET asset=? WHERE serial=?',(str(target),row[1]))
+                if row[0]!=str(target):self.conn.execute('UPDATE source_regions SET asset=? WHERE asset=?',(str(target),row[0]))
+            else:self.conn.execute('INSERT INTO sources(digest,name,asset) VALUES(?,?,?)',(digest,Path(path).name,str(target)))
+            return str(target)
     def sources(self):
         if not self.conn:return []
         with self.lock:return self.conn.execute('SELECT serial,name,asset FROM sources ORDER BY serial').fetchall()
@@ -105,7 +143,7 @@ class CropTray:
     def close(self):
         if self.conn:self.conn.close();self.conn=None
     def materialize(self,item,folder):
-        """Only selected crops become durable job assets; unused crops stay in memory."""
+        """Return a saved library asset, or persist a legacy in-memory crop on demand."""
         if item.asset and Path(item.asset).is_file():return item.asset
         folder=Path(folder);folder.mkdir(parents=True,exist_ok=True);path=folder/(item.id+'.png');tmp=path.with_suffix('.tmp')
         try:item.image.save(tmp,format='PNG');tmp.replace(path)
@@ -125,6 +163,9 @@ def detect_photo_regions(image):
     import cv2
     import numpy as np
     sample=image.convert('RGB').copy();sample.thumbnail((1800,1800));arr=np.asarray(sample);gray=cv2.cvtColor(arr,cv2.COLOR_RGB2GRAY)
+    if float(gray.std())<18 and int(np.ptp(gray))>8:
+        from PIL import ImageOps
+        sample=ImageOps.autocontrast(sample,cutoff=.5);arr=np.asarray(sample);gray=cv2.cvtColor(arr,cv2.COLOR_RGB2GRAY)
     grid=detect_regular_grid(sample)
     if grid:
         sx=image.width/sample.width;sy=image.height/sample.height
@@ -140,7 +181,7 @@ def detect_photo_regions(image):
         if len(approx)!=4 or not cv2.isContourConvex(approx):continue
         quad=order_quad(approx.reshape(4,2));rect_area=abs(cv2.contourArea(quad))
         side_a=float(np.linalg.norm(quad[1]-quad[0]));side_b=float(np.linalg.norm(quad[2]-quad[1]))
-        if min(side_a,side_b)<35 or not .42<min(side_a,side_b)/max(side_a,side_b)<=1:continue
+        if min(side_a,side_b)<min(35,max(12,min(sample.size)*.035)) or not .42<min(side_a,side_b)/max(side_a,side_b)<=1:continue
         # Prevent near-white sheet/page borders being proposed as a portrait.
         mask=np.zeros(gray.shape,np.uint8);cv2.fillConvexPoly(mask,quad.astype(np.int32),255)
         if np.mean(gray[mask>0]<210)<.12:continue
