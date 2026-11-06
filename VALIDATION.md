@@ -71,7 +71,9 @@ Local evidence remains excluded from Git:
 
 The Windows workflow uses pinned dependencies, offscreen Qt with the Windows font directory, and isolated app data. Three private-demo cases and one prior-release-data-copy case skip when their excluded fixtures are absent; those skips do not count as demo/model validation on GitHub.
 
-Hosted results are recorded after the reviewed source push. Source review excludes private images/customer information, tools, databases, model weights, build output, backups and credentials. Source publishing does not itself publish a binary GitHub Release.
+Hosted Windows run [42165424889](https://github.com/ovi2riyad/Printora/actions/runs/42165424889) passed for implementation commit `9e0e3eed5b7467d8d7cac2c130be3538f7229a53`: **70 passed, 4 skipped, 0 failures/errors**, JUnit suite time **21.466 seconds**. The skips are the three private portrait-sheet cases and the previous-release local data-copy case. The JUnit artifact was downloaded and inspected. A local run with the same Windows-font setting also passed all 74 tests.
+
+All 45 staged text/source files were reviewed for private/generated paths, unexpectedly large files and common credential signatures. Private images/customer information, tools, databases, model weights, build output, backups and diagnostic artifacts remained excluded. Source publishing does not itself publish a binary GitHub Release. Documentation-only completion commits do not change the validated implementation.
 
 ## Remaining physical and product limits
 

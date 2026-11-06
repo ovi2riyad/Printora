@@ -10,7 +10,7 @@
 - [x] Phase 5: editor tools and print recipes; expanded API/PDF/Qt regression coverage.
 - [x] Clean candidate build with required model and preserved older release hashes.
 - [x] Final source/frozen acceptance: 29 checks, 68 photos each; promoted separately to StudioPhotoMaker-v3.
-- [ ] Reviewed source push and hosted Windows CI (record actual run after push).
+- [x] Reviewed source pushed to ovi2riyad/Printora main; hosted Windows CI passed (70 passed, 4 private/local-fixture skips).
 
 Studio-side: physical printer/ruler validation at Actual Size / 100% remains required. Optional Phase 6 contact sheets, QR lookup, receipts, batch finishing, expanded calibration and statistics remain follow-up work, outside core delivery.
 

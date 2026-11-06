@@ -1,6 +1,6 @@
 # Studio Photo Maker 3.0 — inspection and implementation plan
 
-**Date:** 2026-11-06. **Status:** Implementation authorized for sequential core phases; see `PHASE_REPORTS_3_0.md` for executed results.
+**Date:** 2026-11-06. **Status:** Core phases 0–5 implemented and validated; see `PHASE_REPORTS_3_0.md` and `VALIDATION.md`. Optional Phase 6 is follow-up work.
 
 **Authorization update:** After Phase 0 the user requested proceeding through core phases automatically, testing/fixing each before the next, then uploading to GitHub. The approval pauses quoted in this original design record are superseded. Current implementation/results are in `PROJECT_INFO.md` and `PHASE_REPORTS_3_0.md`; optional Phase 6 extras remain separate.
 
