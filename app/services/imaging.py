@@ -109,7 +109,11 @@ def prepare_layer(layer,before=False,limit=6000):
             radius=max(1,round(stroke['radius']*im.width));paint=Image.new('L',im.size);draw=ImageDraw.Draw(paint)
             draw.line(points,fill=255,width=radius*2)
             for x,y in (points[0],points[-1]):draw.ellipse((x-radius,y-radius,x+radius,y+radius),fill=255)
-            paint=paint.filter(ImageFilter.GaussianBlur(max(.3,radius*.15)))
+            hardness=stroke.get('hardness')
+            blur=max(.3,radius*.15) if hardness is None else max(.3,radius*(1-max(0,min(1,float(hardness))))*.6)
+            paint=paint.filter(ImageFilter.GaussianBlur(blur))
+            opacity=max(0,min(1,float(stroke.get('opacity',1))))
+            if opacity!=1:paint=paint.point(lambda v:round(v*opacity))
             if stroke['mode']=='restore':
                 if original_alpha is None:original_alpha=load_image(layer.source,limit).getchannel('A').resize(im.size)
                 alpha=Image.composite(original_alpha,alpha,paint)

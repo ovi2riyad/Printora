@@ -17,17 +17,35 @@ def _readonly(path):
     return sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)
 
 
+JSON_COLUMNS=(('jobs','id','payload'),('config','key','value'),('profiles','name','payload'),('orders','id','payload'),('order_items','id','snapshot'))
+
+
+def persistent_documents(conn):
+    tables={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    for table,key,field in JSON_COLUMNS:
+        if table in tables:
+            for id,raw in conn.execute(f'SELECT {key},{field} FROM {table}'):
+                yield table,key,field,id,json.loads(raw)
+
+
+def layer_assets(value):
+    if isinstance(value,dict):
+        for layer in value.get('layers',[]):
+            for key in ('source','mask'):
+                if layer.get(key):yield Path(layer[key]).resolve()
+        for child in value.values():yield from layer_assets(child)
+    elif isinstance(value,list):
+        for child in value:yield from layer_assets(child)
+
+
 def referenced_assets(root):
     """Parse all jobs, including jobs not currently open. Fail closed on corruption."""
     result = set()
     path = Path(root) / 'studio.db'
     if path.exists():
         with closing(_readonly(path)) as conn:
-            for (payload,) in conn.execute('SELECT payload FROM jobs'):
-                for photo in json.loads(payload).get('photos', []):
-                    for layer in photo.get('layers', []):
-                        for key in ('source', 'mask'):
-                            if layer.get(key):result.add(Path(layer[key]).resolve())
+            for table,key,field,id,payload in persistent_documents(conn):
+                if table in ('jobs','order_items'):result.update(layer_assets(payload))
     return result
 
 
@@ -67,7 +85,11 @@ def backup_data(root, destination, include_models=False):
                 files[relative.as_posix()] = saved
             else:files[relative.as_posix()] = path
         # Older jobs can reference files outside app data; include these too.
-        for asset in referenced_assets(root):
+        assets=referenced_assets(root)
+        with closing(_readonly(root/'studio.db')) as conn:
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE name='print_events'").fetchone():
+                assets.update(Path(r[0]).resolve() for r in conn.execute("SELECT path FROM print_events WHERE status<>'Failed'") if Path(r[0]).is_file())
+        for asset in assets:
             if not asset.is_file():raise ValueError('A saved job references a missing image: '+str(asset))
             if not asset.is_relative_to(root):
                 if not asset.is_file():raise ValueError('A saved job references a missing external image: '+str(asset))
@@ -153,12 +175,14 @@ def prepare_restore(archive_path, destination):
         try:
             if main.execute('PRAGMA integrity_check').fetchone()[0]!='ok':raise ValueError('Damaged job database in backup.')
             with main:
-                for table, key, field in [('jobs','id','payload'),('config','key','value'),('profiles','name','payload')]:
-                    for id, raw in main.execute(f'SELECT {key},{field} FROM {table}').fetchall():
-                        rewritten = _remap(json.loads(raw),old,destination,external)
-                        main.execute(f'UPDATE {table} SET {field}=? WHERE {key}=?',(json.dumps(rewritten),id))
+                for table,key,field,id,payload in list(persistent_documents(main)):
+                    rewritten = _remap(payload,old,destination,external)
+                    main.execute(f'UPDATE {table} SET {field}=? WHERE {key}=?',(json.dumps(rewritten),id))
                 for (path,) in main.execute('SELECT path FROM exports').fetchall():
                     main.execute('UPDATE exports SET path=? WHERE path=?',(_remap(path,old,destination,external),path))
+                if main.execute("SELECT 1 FROM sqlite_master WHERE name='print_events'").fetchone():
+                    for id,path in main.execute('SELECT id,path FROM print_events').fetchall():main.execute('UPDATE print_events SET path=? WHERE id=?',(_remap(path,old,destination,external),id))
+                if main.execute('PRAGMA foreign_key_check').fetchone():raise ValueError('Broken customer/order references in backup.')
         finally:main.close()
         library_path = stage/'library'/'library.db'
         if library_path.exists():
@@ -171,6 +195,9 @@ def prepare_restore(archive_path, destination):
                             for rowid, value in library.execute(f'SELECT rowid,{field} FROM {table}').fetchall():
                                 library.execute(f'UPDATE {table} SET {field}=? WHERE rowid=?',(_remap(value,old,destination,external),rowid))
             finally:library.close()
+        if (stage/'export-recovery').exists():
+            for marker in (stage/'export-recovery').glob('*.json'):
+                marker.write_text(json.dumps(_remap(json.loads(marker.read_text(encoding='utf-8')),old,destination,external)),encoding='utf-8')
         (stage/'restore-ready.json').write_text(json.dumps(dict(destination=str(destination),files=len(manifest['files']))),encoding='utf-8')
         return str(stage)
     except Exception:

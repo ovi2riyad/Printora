@@ -90,31 +90,24 @@ class PreparedPicker(QDialog):
         super().__init__(parent);self.tray=tray;self.count=count;self.setWindowTitle('Choose prepared photo' if count==1 else 'Choose two prepared photos');self.resize(760,540);layout=QVBoxLayout(self)
         counts=(count,) if isinstance(count,int) else count;self.counts=counts
         layout.addWidget(QLabel('Select one existing joint photo, or two separate portraits.' if len(counts)>1 else f'Select {count} prepared photo'+('s.' if count>1 else '.')))
-        self.search=QLineEdit();self.search.setPlaceholderText('Search by serial number or name');self.search.textChanged.connect(self.filter);layout.addWidget(self.search)
-        self.list=QListWidget();self.list.setSelectionMode(QAbstractItemView.ExtendedSelection if max(counts)>1 else QAbstractItemView.SingleSelection);self.list.setIconSize(QSize(100,120));layout.addWidget(self.list)
-        self.checked=set();self.error=QLabel();layout.addWidget(self.error);buttons=QDialogButtonBox(QDialogButtonBox.Open|QDialogButtonBox.Cancel);buttons.accepted.connect(self.accept);buttons.rejected.connect(self.reject);layout.addWidget(buttons);self.list.itemChanged.connect(self.check_changed);self.filter('')
+        from app.ui.photo_library import PhotoLibrary
+        self.gallery=PhotoLibrary(tray,maximum=max(counts));layout.addWidget(self.gallery)
+        self.search=self.gallery.search;self.list=self.gallery.list;self.checked=self.list.selected_ids
+        self.error=QLabel();layout.addWidget(self.error);buttons=QDialogButtonBox(QDialogButtonBox.Open|QDialogButtonBox.Cancel);buttons.accepted.connect(self.accept);buttons.rejected.connect(self.reject);layout.addWidget(buttons)
     def chosen(self):
-        ids=self.checked or {i.data(Qt.UserRole) for i in self.list.selectedItems()};return [p for p in self.tray.items if p.id in ids]
+        return self.gallery.chosen()
     def accept(self):
         if len(self.chosen()) not in self.counts:self.error.setText('Choose one combined photo or two portraits.' if len(self.counts)>1 else f'Choose exactly {self.count} photo'+('s.' if self.count>1 else '.'));return
         super().accept()
     def filter(self,text):
-        from PySide6.QtGui import QIcon
-        matches=self.tray.query(text);self.list.blockSignals(True);self.list.clear()
-        for p in matches:
-            w,h=p.size;item=QListWidgetItem(QIcon(pixmap(p.thumbnail())),p.display_name+f'   ·   {w} × {h} px');item.setData(Qt.UserRole,p.id)
-            if max(self.counts)>1:item.setFlags(item.flags()|Qt.ItemIsUserCheckable);item.setCheckState(Qt.Checked if p.id in self.checked else Qt.Unchecked)
-            self.list.addItem(item)
-        self.list.blockSignals(False);self.error.setText(f'{len(self.checked)} checked. Showing up to 200 recent matches; search finds older serials.')
+        self.search.setText(text);self.gallery.refresh()
     def check_changed(self,item):
-        id=item.data(Qt.UserRole)
-        if item.checkState()==Qt.Checked:self.checked.add(id)
-        else:self.checked.discard(id)
-        self.error.setText(f'{len(self.checked)} checked. '+('Open one combined photo or two portraits.' if len(self.counts)>1 else f'Choose {self.count} photos.'))
+        self.list.check_changed(item)
 
 class Cropper(QWidget):
     def __init__(self,tray,run,notify,use,parent=None):
         super().__init__(parent);self.tray=tray;self.run=run;self.notify=notify;self.use=use;self.source_paths=[];self.current_image=None;self.current_path='';self.regions=[];self.source_states={};self.updating=False;self.crop_undo={};self.crop_redo={};self.last_regions=[]
+        self.on_sources_imported=None;self.on_crops_saved=None
         self.setStyleSheet('QPushButton {padding:6px 9px;font-size:12px;}')
         layout=QVBoxLayout(self);layout.setContentsMargins(0,0,0,0);header=QLabel('Cropper');header.setObjectName('title');layout.addWidget(header)
         layout.addWidget(QLabel('Import a scan sheet or camera photo. Separate each person, then keep their crop in the tray.'))
@@ -130,7 +123,11 @@ class Cropper(QWidget):
         self.search=QLineEdit();self.search.setPlaceholderText('Find serial number or name');self.search.textChanged.connect(self.filter_tray);side.addWidget(self.search)
         row=QHBoxLayout();self.sort=QComboBox();self.sort.addItems(['Newest first','Oldest first','Serial ascending']);self.sort.currentIndexChanged.connect(lambda:self.filter_tray(self.search.text()));row.addWidget(self.sort);self.kind_filter=QComboBox();self.kind_filter.addItems(['All','Individual','Joint']);self.kind_filter.currentTextChanged.connect(lambda:self.filter_tray(self.search.text()));row.addWidget(self.kind_filter);side.addLayout(row)
         row=QHBoxLayout();self.deleted=QComboBox();self.deleted.addItems(['Available photos','Removed photos']);self.deleted.currentIndexChanged.connect(lambda:self.filter_tray(self.search.text()));row.addWidget(self.deleted);self.button('Restore selected',self.restore_selected,row);side.addLayout(row)
-        self.tray_list=QListWidget();self.tray_list.setSelectionMode(QAbstractItemView.ExtendedSelection);self.tray_list.setViewMode(QListWidget.IconMode);self.tray_list.setResizeMode(QListWidget.Adjust);self.tray_list.setGridSize(QSize(92,105));self.tray_list.setIconSize(QSize(58,70));side.addWidget(self.tray_list,1)
+        from app.ui.selection import PhotoSelectionList
+        self.tray_list=PhotoSelectionList();self.tray_list.setViewMode(QListWidget.IconMode);self.tray_list.setResizeMode(QListWidget.Adjust);self.tray_list.setGridSize(QSize(130,155));self.tray_list.setIconSize(QSize(94,110));side.addWidget(self.tray_list,1)
+        self.selection_count=QLabel();self.selection_count.setWordWrap(True);side.addWidget(self.selection_count)
+        self.tray_list.selection_updated.connect(self.selection_summary)
+        select_row=QHBoxLayout();self.button('Select visible',self.tray_list.select_visible,select_row);self.button('Clear',self.tray_list.clear_selection,select_row);side.addLayout(select_row)
         self.tray_list.itemDoubleClicked.connect(lambda _:self.preview_library())
         row=QHBoxLayout();self.button('Mark individual',lambda:self.mark_kind('Individual'),row);self.button('Mark joint',lambda:self.mark_kind('Joint'),row);side.addLayout(row)
         row=QHBoxLayout();self.button('Portrait print →',lambda:self.use_selected('portrait'),row);self.button('Joint print →',lambda:self.use_selected('joint'),row);side.addLayout(row)
@@ -155,6 +152,7 @@ class Cropper(QWidget):
             return valid,errors
         def done(result):
             self.restore_sources()
+            if self.on_sources_imported:self.on_sources_imported(result[0])
             self.sources.blockSignals(True)
             for path in result[0]:
                 if path not in self.source_paths:self.source_paths.append(path);self.sources.addItem(Path(path).name)
@@ -228,6 +226,7 @@ class Cropper(QWidget):
                 return len(result)
             return result
         def done(rows):
+            if self.on_crops_saved:self.on_crops_saved()
             if isinstance(rows,int):self.refresh_tray();self.side_tabs.setCurrentIndex(1);self.notify(f'{rows} numbered photos saved to your library.');return
             total=sum(p.image.width*p.image.height for p in self.tray.items)+sum(im.width*im.height for _,im in rows)
             if total>self.tray.max_pixels:raise ValueError('The crop tray is full. Remove unused crops first.')
@@ -238,18 +237,22 @@ class Cropper(QWidget):
         self.tray_label.setText(f'Saved library · {len(self.tray.items)} photos');self.filter_tray(self.search.text())
     def filter_tray(self,text):
         from PySide6.QtGui import QIcon
-        self.tray_list.clear();matches=self.tray.query(text,'newest' if self.sort.currentIndex()==0 else 'oldest',self.kind_filter.currentText(),self.deleted.currentIndex()==1)
+        self.tray_list.rebuilding=True;self.tray_list.clear();matches=self.tray.query(text,'newest' if self.sort.currentIndex()==0 else 'oldest',self.kind_filter.currentText(),self.deleted.currentIndex()==1)
         for p in matches:
             item=QListWidgetItem(QIcon(pixmap(p.thumbnail((58,70)))),p.display_name);item.setData(Qt.UserRole,p.id);item.setToolTip(p.display_name+' · '+p.kind+(' · Removed (recoverable)' if self.deleted.currentIndex()==1 else ' · Available')+' · Double-click to preview');self.tray_list.addItem(item)
         self.visible_items={p.id:p for p in matches}
+        self.tray_list.rebuilding=False;self.tray_list.reapply()
+    def selection_summary(self):
+        rows=self.tray.by_ids(self.tray_list.selected_ids)
+        self.selection_count.setText(f'{len(self.tray_list.selected_ids)} selected: '+', '.join(f'#{p.serial:06d}' for p in rows))
     def rename_photo(self):
         selected=self.tray_list.selectedItems()
         if len(selected)!=1:self.notify('Select one library photo to rename.');return
         id=selected[0].data(Qt.UserRole);item=next((p for p in self.tray.items if p.id==id),self.visible_items[id]);name,ok=QInputDialog.getText(self,'Rename photo','Photo name',text=item.name)
         if ok and name.strip():self.tray.rename(item,name);self.refresh_tray()
-    def remove_from_tray(self):self.tray.remove({i.data(Qt.UserRole) for i in self.tray_list.selectedItems()});self.refresh_tray()
-    def restore_selected(self):self.tray.restore_items({i.data(Qt.UserRole) for i in self.tray_list.selectedItems()});self.refresh_tray()
-    def mark_kind(self,kind):self.tray.set_kind({i.data(Qt.UserRole) for i in self.tray_list.selectedItems()},kind);self.refresh_tray()
+    def remove_from_tray(self):self.tray.remove(set(self.tray_list.selected_ids));self.tray_list.clear_selection();self.refresh_tray()
+    def restore_selected(self):self.tray.restore_items(set(self.tray_list.selected_ids));self.tray_list.clear_selection();self.refresh_tray()
+    def mark_kind(self,kind):self.tray.set_kind(set(self.tray_list.selected_ids),kind);self.refresh_tray()
     def show_preview(self,image,title):
         dialog=QDialog(self);dialog.setWindowTitle(title);layout=QVBoxLayout(dialog);label=QLabel();label.setAlignment(Qt.AlignCenter);label.setPixmap(pixmap(image));layout.addWidget(label);buttons=QDialogButtonBox(QDialogButtonBox.Close);buttons.rejected.connect(dialog.reject);layout.addWidget(buttons);dialog.resize(image.width+40,image.height+80);dialog.exec()
     def preview_crop(self):
@@ -268,6 +271,6 @@ class Cropper(QWidget):
         self.run(preview,lambda im:self.show_preview(im,item.display_name+' · '+item.kind))
     def use_selected(self,mode):
         if self.deleted.currentIndex()==1:self.notify('Restore removed photos before using them in a new job. Existing saved jobs remain available.');return
-        ids={i.data(Qt.UserRole) for i in self.tray_list.selectedItems()};items=[p for p in self.tray.items if p.id in ids];count=1 if mode=='portrait' else 2
+        ids=self.tray_list.selected_ids;items=self.tray.by_ids(ids);count=1 if mode=='portrait' else 2
         if len(items) not in ((1,) if mode=='portrait' else (1,2)):self.notify('Select one portrait, or one combined/two separate photos for joint print.');return
         self.use(mode,items)

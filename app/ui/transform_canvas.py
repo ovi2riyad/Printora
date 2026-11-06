@@ -30,8 +30,9 @@ class LayerItem(QGraphicsPixmapItem):
         self.handles.append(TransformHandle(self.outline,QPointF(0,r.top()-28/self.scale()),self,True));self.sync_overlay()
         for h in self.handles:h.hide()
     def selected_state(self,selected):
-        show=selected and self.layer.visible and not self.layer.locked and self.canvas.tool=='move';self.outline.setVisible(show)
-        for h in self.handles:h.setVisible(show)
+        show=selected and self.layer.visible;self.outline.setVisible(show)
+        pen=QPen(QColor('#095de5'),3);pen.setCosmetic(True);self.outline.setPen(pen)
+        for h in self.handles:h.setVisible(show and not self.layer.locked and self.canvas.tool=='move')
     def sync_overlay(self):
         if hasattr(self,'outline'):self.outline.setPos(self.pos());self.outline.setScale(self.scale());self.outline.setRotation(self.rotation())
     def itemChange(self,change,value):
@@ -59,6 +60,8 @@ class TransformCanvas(EditorCanvas):
     def display(self,image):
         self.layers=[];self.ready=False;self.photo_rect=QRectF(0,0,image.width,image.height);super().display(image)
     def set_layers(self,photo,images,index=0):
+        new_document=not self.ready or photo.id!=getattr(self,'document_id',None);self.document_id=photo.id
+        self.composition=photo.composition
         W=round(photo.width/25.4*140);H=round(photo.height/25.4*140);changed_size=(W,H)!=(self.photo_width,self.photo_height);self.photo_width=W;self.photo_height=H
         self.scene().clear();self.layers=[]
         frame=self.scene().addRect(0,0,W,H,QPen(QColor('#9caaba')),QColor(photo.background));frame.setFlag(QGraphicsItem.ItemClipsChildrenToShape)
@@ -67,7 +70,7 @@ class TransformCanvas(EditorCanvas):
         self.active=index;self.ready=True;self.select_index(index)
         if photo.border and photo.border_mm:
             b=photo.border_mm/25.4*140;pen=QPen(QColor(photo.border_color),b);border=self.scene().addRect(b/2,b/2,W-b,H-b,pen);border.setZValue(100);border.setAcceptedMouseButtons(Qt.NoButton)
-        if changed_size or self.transform().isIdentity():self.fitInView(self.sceneRect(),Qt.KeepAspectRatio)
+        if changed_size or new_document or self.transform().isIdentity():self.fitInView(self.sceneRect(),Qt.KeepAspectRatio)
     def select_index(self,index):
         self.active=index
         for i,item in enumerate(self.layers):item.selected_state(i==index)
@@ -78,7 +81,7 @@ class TransformCanvas(EditorCanvas):
         if self.ready and self.tool in ('erase','restore') and 0<=self.active<len(self.layers):
             item=self.layers[self.active]
             if item.layer.locked:return
-            self.stroke={'mode':self.tool,'points':[],'radius':self.brush_size/2/max(.001,item.scale())/item.pixmap().width()};self.append_stroke(e);return
+            self.stroke={'mode':self.tool,'points':[],'radius':self.brush_size/2/max(.001,item.scale())/item.pixmap().width(),'hardness':getattr(self,'brush_hardness',.75),'opacity':getattr(self,'brush_opacity',1.)};self.append_stroke(e);return
         QGraphicsView.mousePressEvent(self,e)
     def append_stroke(self,e):
         item=self.layers[self.active];point=item.mapFromScene(self.mapToScene(e.position().toPoint()));x=point.x()/item.pixmap().width()+.5;y=point.y()/item.pixmap().height()+.5
@@ -111,5 +114,11 @@ class TransformCanvas(EditorCanvas):
         super().keyReleaseEvent(e)
     def drawForeground(self,painter,rect):
         super().drawForeground(painter,rect)
+        if self.ready and getattr(self,'safe_area_visible',True):
+            W,H=self.photo_width,self.photo_height;settings=getattr(self,'composition',{})
+            # Canvas units are 140 DPI; composition margins are physical mm.
+            top,bottom,left,right=[settings.get(k,2)/25.4*140 for k in ('top','bottom','left','right')]
+            pen=QPen(QColor('#095de5'),1,Qt.DashLine);pen.setCosmetic(True);painter.setPen(pen);painter.setBrush(Qt.NoBrush)
+            painter.drawRect(QRectF(left,top,max(0,W-left-right),max(0,H-top-bottom)))
         if self.tool!='move' and self.hover is not None:
             pen=QPen(QColor('#e86650') if self.tool=='erase' else QColor('#238d64'),1.2);pen.setCosmetic(True);painter.setPen(pen);painter.drawEllipse(self.hover,self.brush_size/2,self.brush_size/2)

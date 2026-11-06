@@ -26,6 +26,7 @@ class PreparedPhoto:
     thumb: str = ''
     dimensions: tuple = (0,0)
     kind: str = 'Individual'
+    created_at: str = ''
 
     @property
     def image(self):
@@ -51,15 +52,23 @@ class CropTray:
         self.items=[];self.max_pixels=max_pixels;self.root=Path(root) if root else None;self.lock=threading.RLock();self.conn=None;self.next_serial=1;self.hidden=[]
         if self.root:
             self.root.mkdir(parents=True,exist_ok=True)
+            if (self.root/'library.db').exists():
+                from app.core.migrations import safety_snapshot
+                with sqlite3.connect(self.root/'library.db') as check:
+                    version=check.execute('PRAGMA user_version').fetchone()[0]
+                    if version>3:raise ValueError('This library needs a newer Studio Photo Maker. Preserve it and use the matching version.')
+                    if version<3:safety_snapshot(self.root/'library.db','3.0-library')
             self.conn=sqlite3.connect(self.root/'library.db',check_same_thread=False)
             self.conn.execute('PRAGMA journal_mode=WAL')
             self.conn.executescript('CREATE TABLE IF NOT EXISTS photos(serial INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE,name TEXT,source TEXT,asset TEXT,thumb TEXT,width INTEGER,height INTEGER,deleted INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS sources(serial INTEGER PRIMARY KEY AUTOINCREMENT,digest TEXT UNIQUE,name TEXT,asset TEXT); CREATE TABLE IF NOT EXISTS source_regions(asset TEXT PRIMARY KEY,payload TEXT);')
             columns={row[1] for row in self.conn.execute('PRAGMA table_info(photos)')}
-            if 'kind' not in columns:
-                with self.conn:
+            with self.conn:
+                self.conn.execute('BEGIN IMMEDIATE')
+                if 'kind' not in columns:
                     self.conn.execute("ALTER TABLE photos ADD COLUMN kind TEXT NOT NULL DEFAULT 'Individual'")
                     self.conn.execute("UPDATE photos SET kind='Joint' WHERE width>height OR lower(name) LIKE 'joint%'")
-                    self.conn.execute('PRAGMA user_version=2')
+                if 'created_at' not in columns:self.conn.execute('ALTER TABLE photos ADD COLUMN created_at TEXT')
+                self.conn.execute('PRAGMA user_version=3')
             for serial,id,name,source,asset,thumb,w,h,kind in self.conn.execute('SELECT serial,id,name,source,asset,thumb,width,height,kind FROM photos WHERE deleted=0 ORDER BY serial'):
                 self.items.append(PreparedPhoto(name,None,source,id,asset,serial,thumb,(w,h),kind))
     def add(self,name,image,source='',kind=None):
@@ -69,7 +78,7 @@ class CropTray:
         item=PreparedPhoto(name,image.copy() if self.conn is None else None,source,dimensions=image.size,kind=kind)
         if self.conn:
             with self.lock,self.conn:
-                cursor=self.conn.execute('INSERT INTO photos(id,name,source,asset,thumb,width,height,kind) VALUES(?,?,?,?,?,?,?,?)',(item.id,name,source,'','',image.width,image.height,kind));item.serial=cursor.lastrowid
+                cursor=self.conn.execute("INSERT INTO photos(id,name,source,asset,thumb,width,height,kind,created_at) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)",(item.id,name,source,'','',image.width,image.height,kind));item.serial=cursor.lastrowid
                 folder=self.root/'photos';folder.mkdir(exist_ok=True);path=folder/(f'{item.serial:06d}_'+item.id+'.png');tmp=path.with_suffix('.tmp');thumb=path.with_suffix('.thumb.jpg')
                 try:
                     image.save(tmp,format='PNG');tmp.replace(path);small=image.convert('RGB');small.thumbnail((180,210));small.save(thumb,quality=90)
@@ -84,7 +93,7 @@ class CropTray:
         self.hidden.extend(p for p in self.items if p.id in ids);self.items[:]=[p for p in self.items if p.id not in ids]
     def restore_items(self,ids):
         if self.conn:
-            restored=[p for p in self.query(deleted=True,limit=None) if p.id in ids]
+            restored=self.query(deleted=True,limit=None,ids=ids)
             with self.lock,self.conn:self.conn.executemany('UPDATE photos SET deleted=0 WHERE id=?',[(id,) for id in ids])
         else:restored=[p for p in self.hidden if p.id in ids]
         self.items.extend(restored);self.items.sort(key=lambda p:p.serial);self.hidden[:]=[p for p in self.hidden if p.id not in ids]
@@ -94,20 +103,28 @@ class CropTray:
             with self.lock,self.conn:self.conn.executemany('UPDATE photos SET kind=? WHERE id=?',[(kind,id) for id in ids])
         for item in self.items:
             if item.id in ids:item.kind=kind
-    def query(self,text='',sort='newest',kind='All',deleted=False,limit=200):
+    def query(self,text='',sort='newest',kind='All',deleted=False,limit=200,offset=0,date_filter=0,ids=None):
         """Bounded metadata search; never decode full photos while browsing."""
         if self.conn:
-            sql='SELECT serial,id,name,source,asset,thumb,width,height,kind FROM photos WHERE deleted=?'
+            sql='SELECT serial,id,name,source,asset,thumb,width,height,kind,created_at FROM photos WHERE deleted=?'
             parameters=[int(deleted)]
             if text:sql+=" AND instr(lower(printf('#%06d',serial)||' '||name),lower(?))>0";parameters.append(text)
             if kind in ('Individual','Joint'):sql+=' AND kind=?';parameters.append(kind)
+            if ids is not None:
+                if not ids:return []
+                sql+=' AND id IN (SELECT value FROM json_each(?))';parameters.append(json.dumps(list(ids)))
+            if date_filter in (1,2):sql+=" AND created_at>=datetime('now',?)";parameters.append('-7 days' if date_filter==1 else '-30 days')
+            elif date_filter==3:sql+=' AND created_at IS NULL'
             sql+=' ORDER BY serial '+('DESC' if sort=='newest' else 'ASC')
-            if limit is not None:sql+=' LIMIT ?';parameters.append(limit)
+            if limit is not None:sql+=' LIMIT ? OFFSET ?';parameters.extend((limit,offset))
             with self.lock:rows=self.conn.execute(sql,parameters).fetchall()
-            return [PreparedPhoto(name,None,source,id,asset,serial,thumb,(w,h),category) for serial,id,name,source,asset,thumb,w,h,category in rows]
-        rows=[p for p in (self.hidden if deleted else self.items) if text.lower() in p.display_name.lower() and (kind=='All' or p.kind==kind)]
+            return [PreparedPhoto(name,None,source,id,asset,serial,thumb,(w,h),category,created or '') for serial,id,name,source,asset,thumb,w,h,category,created in rows]
+        rows=[p for p in (self.hidden if deleted else self.items) if text.lower() in p.display_name.lower() and (kind=='All' or p.kind==kind) and (ids is None or p.id in ids)]
         rows.sort(key=lambda p:p.serial,reverse=sort=='newest')
-        return rows if limit is None else rows[:limit]
+        return rows[offset:] if limit is None else rows[offset:offset+limit]
+    def by_ids(self,ids):
+        if not ids:return []
+        return self.query(sort='oldest',limit=None,ids=ids)
     def rename(self,item,name):
         name=name.strip()
         if not name:raise ValueError('Enter a photo name.')

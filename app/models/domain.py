@@ -26,6 +26,7 @@ class Layer:
     sharpness: float = 1.0
     mask_strokes: list = field(default_factory=list)
     defringe: float = 0.0
+    group: str = ''
 
 @dataclass
 class Photo:
@@ -41,6 +42,8 @@ class Photo:
     border_color: str = '#808080'
     border_mm: float = 0.2
     layers: list = field(default_factory=list)
+    composition: dict = field(default_factory=dict)
+    provenance: dict = field(default_factory=dict)
 
     def validate(self):
         if not all(math.isfinite(v) and v > 0 for v in (self.width, self.height)):

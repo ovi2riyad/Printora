@@ -14,6 +14,7 @@ jobs:
     timeout-minutes: 15
     env:
       QT_QPA_PLATFORM: offscreen
+      QT_QPA_FONTDIR: C:\Windows\Fonts
     steps:
       - name: Check out source
         uses: actions/checkout@v7.0.1

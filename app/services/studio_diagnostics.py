@@ -75,11 +75,14 @@ def verify_studio(demo_dir,destination):
         w.dirty=False;w.use_crops('joint',portrait_items[:2]);wait(w);render_photo(w.photo).save(out/'separate-joint.png');w.grab().save(str(out/'joint-editor.png'));w.show_print();wait(w);export_pdf(w.job,out/'joint.pdf')
         w.stack.setCurrentIndex(1);w.layer().brightness=1.08;w.layer().defringe=.2;w.layer().mask_strokes=[dict(mode='erase',points=[[.02,.02]],radius=.01)];w.save_job();job_id=w.job.id
         w.db.set('quantity',6);w.db.set('layout','grid_2x2')
+        from app.services.studio_v3_diagnostics import verify_management,verify_restored_management
+        management_state,management_checks=verify_management(w,out,wait,portrait_items,joint_items)
         backup=out/'studio-backup.zip';restored_root=data_root().with_name('StudioPhotoMaker-restored-check');stage=[]
         w.run(lambda:backup_data(data_root(),backup),lambda _:None);wait(w)
         w.run(lambda:prepare_restore(backup,restored_root),lambda result:stage.append(result));wait(w)
         install_restore(stage[0],restored_root)
         restored_db=Database(restored_root/'studio.db');restored_job=restored_db.load_job(job_id)
+        verify_restored_management(restored_db,management_state,out)
         assert restored_db.get('quantity')==6 and all(Path(layer.source).is_file() and Path(layer.mask).is_file() for layer in restored_job.photos[0].layers);restored_db.conn.close()
         restored_library=CropTray(root=restored_root/'library');assert len(restored_library.items)==len(w.tray.items);restored_library.close()
         serials=[(p.id,p.serial,p.name) for p in w.tray.items];total=len(serials);assert len({p.serial for p in w.tray.items})==total
@@ -94,6 +97,7 @@ def verify_studio(demo_dir,destination):
         w.open_cropper();wait(w);assert w.cropper.current_image is not None;w.grab().save(str(out/'saved-cropper.png'))
         assert all(hashlib.sha256(Path(p).read_bytes()).hexdigest()==h for p,h in hashes.items())
         result=dict(passed=True,total_saved=total,counts=counts,combined_checks=checks,seconds=round(time.monotonic()-start,2),checks=['saved sources and permanent serials','tiled portrait sheets','automatic canvas framing','combined joint keeps both faces','two separate subjects','mask/color/halo edit persistence','exact-size portrait/joint PDFs','library restart with lazy images','source preservation','2x2 and custom grid PDFs','maximum-fit landscape layout','live quantities preserve placements','profile application preserves layers','crop undo and redo','removed serial recovery','fine-edge offline model inference','categorized settings','verified backup and cross-path restore','preferences survive restart'])
+        result['checks']+=management_checks+['customer/order/session cross-path restore and successful reprint']
     except Exception as e:
         import traceback
         result=dict(passed=False,error=str(e),traceback=traceback.format_exc())

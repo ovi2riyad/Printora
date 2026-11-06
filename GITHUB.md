@@ -95,6 +95,8 @@ Private demo images, prior local release data, and portrait models are not downl
 
 ## Distribute the Windows application
 
-Use a GitHub **Release asset** for an application ZIP, rather than committing `dist` or large model files to the source repository. `build.bat` builds to `dist/candidate/StudioPhotoMaker` and requires the installed portrait model. Validate the frozen candidate before promoting it; the current updated local release is `dist/StudioPhotoMaker-v2`, with the previous `dist/StudioPhotoMaker` retained. ZIP the entire validated application folder including `_internal` and bundled third-party licenses. Upload that ZIP to a release only when you intend to distribute it.
+Use a GitHub **Release asset** for an application ZIP, rather than committing `dist` or large model files to the source repository. `build.bat` builds to `dist/candidate/StudioPhotoMaker` and requires the installed portrait model. Validate the frozen candidate before promoting it; the 3.0 destination is `dist/StudioPhotoMaker-v3`, with `dist/StudioPhotoMaker-v2` and `dist/StudioPhotoMaker` retained. ZIP the entire validated folder including `_internal`, third-party notices and current documentation. Source uploads do not automatically publish a binary release.
+
+The 3.0 core suite has 74 local tests. Four local-fixture cases skip in clean checkouts; inspect actual CI results rather than assuming demo/model acceptance ran on GitHub. Customer data, order artifacts, backups and diagnostic screenshots stay local. Phase execution is in `PHASE_REPORTS_3_0.md`; final results are in `VALIDATION.md`. Rolling back to an older EXE also requires its matching pre-upgrade data backup because older apps may not read newly saved 3.0 fields.
 
 The source archive alone is for developers; it does not contain the ready-to-run EXE or bundled model. Users of a packaged release do not need Python. The exact PDF footprint remains unchanged by hosting the code on GitHub.

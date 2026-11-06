@@ -7,8 +7,9 @@ from app.services.profiles import normalize_profile,REGIONS,LAYOUTS
 
 class ProfileDialog(QDialog):
     def __init__(self,p,parent=None):
-        super().__init__(parent);self.setWindowTitle('Photo size profile');self.p=dict(p);self.fields={};outer=QVBoxLayout(self);content=QWidget();form=QFormLayout(content);scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setWidget(content);outer.addWidget(scroll,1)
+        super().__init__(parent);self.setWindowTitle('Print recipe / photo profile');self.p=dict(p);self.fields={};outer=QVBoxLayout(self);content=QWidget();form=QFormLayout(content);scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setWidget(content);outer.addWidget(scroll,1)
         p=normalize_profile(p,validate=False)
+        self.p=dict(p)
         for key,label in [('name','Name'),('country','Country / region'),('kind','Photo category'),('document_type','Usage / document label'),('width','Width (mm)'),('height','Height (mm)'),('quantity','Default copies'),('background','Background'),('border','Border enabled'),('border_color','Border color'),('border_mm','Border (mm)'),('layout','Default print layout'),('columns','Custom columns'),('rows','Custom rows'),('notes','Notes'),('url','Reference URL'),('verification','Verification')]:
             if key in ('width','height','border_mm'):
                 w=QDoubleSpinBox();w.setRange(0 if key=='border_mm' else 1,1000);w.setDecimals(2);w.setValue(float(p.get(key,0.2)))
@@ -23,6 +24,9 @@ class ProfileDialog(QDialog):
             elif key=='border':w=QCheckBox();w.setChecked(p.get(key,True))
             else:w=QLineEdit(str(p.get(key,'')))
             self.fields[key]=w;form.addRow(label,w)
+        paper=QComboBox();paper.addItems(['portrait','landscape','auto']);paper.setCurrentText(p['paper_orientation']);self.fields['paper_orientation']=paper;form.addRow('Preferred paper orientation',paper)
+        for key,label in [('margin','Page margins (mm)'),('gap_x','Horizontal gap (mm)'),('gap_y','Vertical gap (mm)')]:
+            w=QDoubleSpinBox();w.setRange(0,80);w.setDecimals(2);w.setValue(p[key]);self.fields[key]=w;form.addRow(label,w)
         row=QHBoxLayout()
         for key,title in [('background','Pick background'),('border_color','Pick border color')]:
             button=QPushButton(title);button.clicked.connect(lambda checked=False,k=key:self.pick_color(k));row.addWidget(button)
@@ -32,7 +36,8 @@ class ProfileDialog(QDialog):
         color=QColorDialog.getColor(QColor(self.fields[key].text()),self)
         if color.isValid():self.fields[key].setText(color.name())
     def value(self):
-        return normalize_profile({k:w.value() if isinstance(w,(QDoubleSpinBox,QSpinBox)) else w.isChecked() if isinstance(w,QCheckBox) else (w.currentData() if k=='layout' else w.currentText()) if isinstance(w,QComboBox) else w.text() for k,w in self.fields.items()})
+        values={k:w.value() if isinstance(w,(QDoubleSpinBox,QSpinBox)) else w.isChecked() if isinstance(w,QCheckBox) else (w.currentData() if k=='layout' else w.currentText()) if isinstance(w,QComboBox) else w.text() for k,w in self.fields.items()}
+        return normalize_profile(dict(self.p,**values))
     def accept(self):
         try:self.value()
         except (ValueError,TypeError) as e:self.error.setText(str(e));return
@@ -77,12 +82,14 @@ class Profiles(QWidget):
                 self.refresh();self.changed()
             except Exception as e:QMessageBox.warning(self,'Invalid profile',str(e))
     def add(self):
-        p=starter_profiles()[0];p['name']='New custom profile';p['country']='Custom';p['verification']='Custom — verify requirements';self.dialog(p)
+        import uuid
+        p=starter_profiles()[0];p['recipe_id']=uuid.uuid4().hex;p['name']='New custom profile';p['country']='Custom';p['verification']='Custom — verify requirements';self.dialog(p)
     def edit(self):
         if self.selected():self.dialog(self.selected(),self.selected()['name'])
     def duplicate(self):
         if self.selected():
-            p=dict(self.selected());p['name']+=' copy';self.dialog(p)
+            import uuid
+            p=dict(self.selected());p['name']+=' copy';p['recipe_id']=uuid.uuid4().hex;self.dialog(p)
     def delete(self):
         if self.selected():self.db.delete_profile(self.selected()['name']);self.refresh();self.changed()
     def default(self):
@@ -90,6 +97,8 @@ class Profiles(QWidget):
             p=self.selected();self.db.set('joint_profile' if p['kind']=='Joint' else 'default_profile',p['name'])
             prefix='joint' if p['kind']=='Joint' else 'portrait'
             for key in ('width','height'):self.db.set(prefix+'_'+key,p[key])
+            for key in ('quantity','background','border','border_color','border_mm','margin','gap_x','gap_y','layout','rows','columns'):self.db.set(key,p[key])
+            self.db.set('landscape',p['paper_orientation']=='landscape')
             self.hint.setText(p['name']+' is the default for '+p['kind'].lower()+' photos.');self.changed()
     def restore(self):self.db.restore_profiles();self.refresh();self.changed();self.hint.setText('Missing starters restored; customized profiles kept.')
     def import_json(self):
@@ -102,6 +111,11 @@ class Profiles(QWidget):
                     if not isinstance(p,dict):raise ValueError('Each profile must be an object.')
                     if not p.get('name') or not 0<float(p['width'])<=1000 or not 0<float(p['height'])<=1000:raise ValueError('Invalid profile dimensions or name.')
                 rows=[normalize_profile(p) for p in rows]
+                existing={normalize_profile(p,validate=False)['recipe_id']:p['name'] for p in self.db.profiles()}
+                seen=set()
+                for p in rows:
+                    if p['recipe_id'] in seen or (p['recipe_id'] in existing and existing[p['recipe_id']]!=p['name']):raise ValueError('Recipe ID is already used by another name. Rename it in the manager, or duplicate it to create a new identity.')
+                    seen.add(p['recipe_id'])
                 with self.db.conn:
                     for p in rows:self.db.conn.execute('INSERT OR REPLACE INTO profiles VALUES(?,?)',(p['name'],json.dumps(p)))
                 self.refresh();self.changed()

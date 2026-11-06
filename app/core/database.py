@@ -22,6 +22,9 @@ class Database:
     def __init__(self, path=None):
         self.path = Path(path) if path else data_root() / 'studio.db'
         self.conn = sqlite3.connect(self.path)
+        if self.conn.execute("SELECT 1 FROM sqlite_master WHERE name='schema_migrations'").fetchone():
+            if (self.conn.execute('SELECT max(version) FROM schema_migrations').fetchone()[0] or 0)>4:
+                self.conn.close();raise ValueError('This data was created by a newer Studio Photo Maker. Open it with the matching newer version.')
         self.conn.execute('PRAGMA journal_mode=WAL')
         self.conn.executescript('CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,name TEXT,payload TEXT,updated TEXT DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS config(key TEXT PRIMARY KEY,value TEXT); CREATE TABLE IF NOT EXISTS profiles(name TEXT PRIMARY KEY,payload TEXT); CREATE TABLE IF NOT EXISTS exports(path TEXT,created TEXT DEFAULT CURRENT_TIMESTAMP);')
         if not self.get('profiles_initialized', False):
@@ -42,7 +45,7 @@ class Database:
         with self.conn: self.conn.execute('INSERT OR REPLACE INTO config VALUES(?,?)',(key,json.dumps(value)))
 
     def save_job(self,job):
-        with self.conn: self.conn.execute('INSERT OR REPLACE INTO jobs(id,name,payload,updated) VALUES(?,?,?,CURRENT_TIMESTAMP)',(job.id,job.name,json.dumps(job.to_dict())))
+        with self.conn: self.conn.execute('INSERT INTO jobs(id,name,payload,updated) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET name=excluded.name,payload=excluded.payload,updated=excluded.updated',(job.id,job.name,json.dumps(job.to_dict())))
 
     def load_job(self,id):
         row=self.conn.execute('SELECT payload FROM jobs WHERE id=?',(id,)).fetchone()
@@ -67,6 +70,8 @@ class Database:
 
     def rename_profile(self,old_name,p):
         p=normalize_profile(p)
+        existing=next((raw for raw in self.profiles() if raw['name']==old_name),None)
+        if existing:p['recipe_id']=normalize_profile(existing,validate=False)['recipe_id']
         if old_name != p['name'] and any(x['name']==p['name'] for x in self.profiles()):
             raise ValueError('A profile with this name already exists.')
         with self.conn:

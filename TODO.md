@@ -1,5 +1,21 @@
 ﻿# Release checklist
 
+## Studio Photo Maker 3.0 core (2026-11-06)
+
+- [x] Phase 0: inspect source/docs and record the implementation plan.
+- [x] Phase 1: persistent selection, improved gallery and balanced framing; test/fix before continuing.
+- [x] Phase 2: customers, mobile search, optional imports and photo association; test/fix before continuing.
+- [x] Phase 3: immutable orders, history, export recovery and reprint; test/fix before continuing.
+- [x] Phase 4: mixed-size sessions, quantities, orientation and retained placements; test/fix before continuing.
+- [x] Phase 5: editor tools and print recipes; expanded API/PDF/Qt regression coverage.
+- [x] Clean candidate build with required model and preserved older release hashes.
+- [x] Final source/frozen acceptance: 29 checks, 68 photos each; promoted separately to StudioPhotoMaker-v3.
+- [ ] Reviewed source push and hosted Windows CI (record actual run after push).
+
+Studio-side: physical printer/ruler validation at Actual Size / 100% remains required. Optional Phase 6 contact sheets, QR lookup, receipts, batch finishing, expanded calibration and statistics remain follow-up work, outside core delivery.
+
+See `PHASE_REPORTS_3_0.md` for each phase's test result and `PROJECT_INFO.md` for current architecture/data rules. Checklists below are historical.
+
 ## Professional studio update (2026-11-05)
 
 - [x] Audit active workflows and run baseline: 35 tests passed.

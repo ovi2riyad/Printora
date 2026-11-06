@@ -52,7 +52,7 @@ class StudioSettings(Settings):
         self.tabs.addTab(Profiles(db,profiles_changed),'Profiles')
         processing=tab('Processing');self.defaults['model_dir']=str(data_root()/'models');self.add(processing,'model_dir','Local model folder')
         self.add(processing,'processing_quality','Segmentation quality',choices=[('Fast (smaller working image)','fast'),('Balanced','balanced'),('Fine edges (guided matte)','fine')])
-        self.add(processing,'automatic_framing','Initial framing',choices=[('Auto head and shoulders','auto'),('Fit whole image','fit'),('Fill canvas','fill')])
+        self.add(processing,'automatic_framing','Initial framing',choices=[('Balanced margins','balanced'),('Document frame','document'),('Legacy head and shoulders','auto'),('Fit whole image','fit'),('Fill canvas','fill')])
         try:
             model=find_background_model(db.get('model_dir'));description=f'{model.name} · {model.stat().st_size/1_000_000:.1f} MB · local CPU processing'
         except ValueError:description='No model installed. Install one below before removing backgrounds.'

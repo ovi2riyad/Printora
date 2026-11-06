@@ -21,6 +21,7 @@ def main():
         position=sys.argv.index('--verify-runtime')
         return verify_runtime(sys.argv[position+1],sys.argv[position+2])
     app = QApplication(sys.argv)
+    app.setApplicationVersion('3.0.0')
     app.setApplicationName('Studio Photo Maker')
     app.setOrganizationName('StudioPhotoMaker')
     window = MainWindow()

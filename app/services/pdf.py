@@ -1,5 +1,6 @@
 import os
 import tempfile
+from collections import OrderedDict
 from pathlib import Path
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
@@ -14,13 +15,15 @@ def export_pdf(job,path,current_page=None,dpi=300):
     fd,tmp=tempfile.mkstemp(suffix='.pdf',dir=target.parent); os.close(fd)
     try:
         pw,ph=page_size(job.print_settings); c=canvas.Canvas(tmp,pagesize=(pt(pw),pt(ph)))
-        c.setTitle(job.name); photos={p.id:p for p in job.photos}; images={}
+        c.setTitle(job.name); photos={p.id:p for p in job.photos}; images=OrderedDict()
         pages=[current_page] if current_page is not None else range(job.page_count)
         for page in pages:
             for r in job.placements:
                 if r.page!=page:continue
                 p=photos[r.photo_id]
                 if p.id not in images:images[p.id]=ImageReader(render_photo(p,dpi))
+                images.move_to_end(p.id)
+                while len(images)>4:images.popitem(last=False)
                 x,y,w,h=pt(r.x),pt(ph-r.y-r.height),pt(r.width),pt(r.height)
                 c.drawImage(images[p.id],x,y,w,h)
                 if p.border and p.border_mm:

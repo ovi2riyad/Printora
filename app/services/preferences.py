@@ -13,7 +13,7 @@ def default_preferences():
                 joint_width=55.,joint_height=45.,background='#ADD8E6',quantity=4,border=True,
                 border_color='#808080',border_mm=.2,landscape=False,margin=10.,gap_x=.2,gap_y=.2,
                 layout='auto',rows=2,columns=2,dpi=300,processing_quality='balanced',
-                automatic_framing='auto',show_guides=True)
+                automatic_framing='balanced',show_guides=True)
 
 
 def validate_preferences(values):
@@ -29,6 +29,6 @@ def validate_preferences(values):
     if values['layout'] not in LAYOUTS:raise ValueError('Choose a supported print layout.')
     if not 72<=values['dpi']<=600:raise ValueError('Render DPI must be between 72 and 600.')
     if values['processing_quality'] not in ('fast','balanced','fine'):raise ValueError('Choose a supported processing quality.')
-    if values['automatic_framing'] not in ('auto','fit','fill'):raise ValueError('Choose a supported framing mode.')
+    if values['automatic_framing'] not in ('auto','fit','fill','balanced','document','custom'):raise ValueError('Choose a supported framing mode.')
     if not values['output'].strip():raise ValueError('Choose a default save folder.')
     return values
