@@ -20,8 +20,11 @@ def main():
         from app.services.diagnostics import verify_runtime
         position=sys.argv.index('--verify-runtime')
         return verify_runtime(sys.argv[position+1],sys.argv[position+2])
+    from app.core.windows import configure_shell
+    from app.version import VERSION
+    configure_shell()
     app = QApplication(sys.argv)
-    app.setApplicationVersion('3.0.0')
+    app.setApplicationVersion(VERSION)
     app.setApplicationName('Studio Photo Maker')
     app.setOrganizationName('StudioPhotoMaker')
     window = MainWindow()

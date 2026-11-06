@@ -1,6 +1,22 @@
 # Studio Photo Maker 3.0 — validation results
 
-Executed on Windows, 2026-11-06, Python 3.12.10 x64. These are recorded checks, not guarantees for later changes. Core phases were tested/fixed sequentially; optional Phase 6 extras were not implemented.
+Executed on Windows, 2026-11-06, Python 3.12.10 x64. These are recorded checks, not guarantees for later changes. Core phases were tested/fixed sequentially. The subsequent Printora 3.1 update adds Phase 6 and the requested Windows installer.
+
+## Printora 3.1 tools and Windows Setup
+
+Initial expanded suite: **81 passed, 2 existing warnings, 19.78 seconds** (`.tools/printora-31-tests.xml`). Initial source acceptance: **36 checks, 68 photos, exit 0, 46.42 seconds**, in fresh `.tools/printora-31-source-data`; results under `.tools/printora-31-source-check`. Seven new tests cover contact-sheet pagination/privacy, QR roundtrip/strict parsing, receipt privacy/price validation, exact calibration geometry, isolated batch failures/source hashes/review defaults, actual Qt review/save/lookup/preferences/statistics, and production installer directives.
+
+The clean onedir build and first production installer compile succeeded. Inno Setup 7.1.1 was downloaded from its official immutable GitHub release, checked against SHA-256 `8a5a6711c3766a6e5fb74f280ba0e3551e719ce94538d901fdbd1f8f9920b3f0`, and its Authenticode signature reported Valid (Pyrsys B.V.). Production Setup uses 64-bit Program Files with administrator privileges, common Desktop/Start menu shortcuts and a stable Windows uninstall registration. Data remains under the existing per-user StudioPhotoMaker folder.
+
+Final suite after the review-layout adjustment: **81 passed, 2 existing warnings, 22.30 seconds**, `.tools/printora-31-final-tests.xml`. Final source acceptance passed **36 checks, 68 photos, exit 0, 71.70 seconds** with fresh data; `.tools/printora-31-final-source-check/result.json`. That run overlapped installer compression; timing is not a performance guarantee.
+
+The final clean onedir build succeeded (`.tools/printora-31-final-build.log`). The actual installed `Printora.exe` passed **36 checks with 68 photos, exit 0, 51.61 seconds**, with fresh app data, no external model override and only its bundled model. Full installer harness passed in **222.25 seconds**, including compiler time, installation, upgrade, dashboard smoke, full workflow and uninstall. Evidence: `.tools/printora-31-final-install-check/result.json`, `install.log`, `upgrade.log`, `uninstall.log`, `workflow/result.json`, screenshots and PDFs.
+
+Verified actual Desktop/Start menu shortcut targets/working directories, Windows Installed Apps registration/version, stable upgrade identity, renamed EXE startup without Python, retained user-data sentinel and unknown application-folder file through upgrade/uninstall, removal of installed binaries/shortcuts/registration, and all original workflow/source hashes. The uninstaller intentionally leaves the unknown-file directory, and the preservation assertion passed. All three previous release EXE hashes remain unchanged (`.tools/printora-31-previous-releases.json`). The validated portable package was promoted separately to `dist/Printora-3.1`.
+
+The harness uses the same installer source with a separate test identity, workspace destinations and non-admin privileges. Production Setup defaults to `{commonpf64}\Printora` (normally `C:\Program Files\Printora`), requires administration and creates common shortcuts. Those directives were checked and the production Setup compiled. A real elevated Program Files install was **not** executed in this non-admin automation session. Physical printer/ruler validation remains outstanding. The final deliverable is `dist/installers/Printora-3.1.0-Setup.exe`; source is pushed separately from binary release publishing. All 3.0 results below are historical baseline evidence.
+
+The 3.1 source update is uploaded to `main`; current hosted results are visible under [Windows tests](https://github.com/ovi2riyad/Printora/actions/workflows/tests.yml). A clean hosted checkout is expected to run 77 tests and skip four excluded private/local fixtures; inspect the actual run before claiming demo/model/installer acceptance occurred there. The local installed-app acceptance above is separate evidence.
 
 ## Automated tests
 

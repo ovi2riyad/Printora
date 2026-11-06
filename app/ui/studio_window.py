@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from PIL import Image,ImageDraw
 from PySide6.QtCore import Qt,QTimer,QThreadPool,QUrl,QProcess
-from PySide6.QtGui import QAction,QColor,QDesktopServices
+from PySide6.QtGui import QAction,QColor,QDesktopServices,QIcon
 from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,QStackedWidget,QFrame,QScrollArea,QDoubleSpinBox,QSpinBox,QComboBox,QCheckBox,QFileDialog,QColorDialog,QMessageBox,QProgressBar,QDialog,QListWidget,QDialogButtonBox,QTabWidget,QButtonGroup)
 from app.core.database import Database,data_root
 from app.models.domain import Photo,Layer,Job
@@ -26,7 +26,10 @@ from app.ui.transform_canvas import TransformCanvas
 
 class StudioWindow(QMainWindow):
     def __init__(self):
-        super().__init__();self.setWindowTitle('Studio Photo Maker 3.0');self.resize(1360,900);self.setMinimumSize(1050,740)
+        from app.version import VERSION
+        super().__init__();self.setWindowTitle(f'Printora {VERSION} — Studio Photo Maker');self.resize(1360,900);self.setMinimumSize(1050,740)
+        icon=Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parents[2]))/'assets'/'Printora.ico'
+        if icon.is_file():self.setWindowIcon(QIcon(str(icon)))
         self.db=Database();self.job=Job();self.photo=None;self.mode='portrait';self.dirty=False;self.busy=False;self.syncing=False;self.workers=set();self.undo=[];self.redo=[];self.tray=CropTray(root=data_root()/'library')
         self.pool=QThreadPool();self.pool.setMaxThreadCount(1);self.setAcceptDrops(True)
         self.timer=QTimer(self);self.timer.setSingleShot(True);self.timer.setInterval(160);self.timer.timeout.connect(self.render_preview)

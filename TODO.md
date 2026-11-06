@@ -12,7 +12,19 @@
 - [x] Final source/frozen acceptance: 29 checks, 68 photos each; promoted separately to StudioPhotoMaker-v3.
 - [x] Reviewed source pushed to ovi2riyad/Printora main; hosted Windows CI passed (70 passed, 4 private/local-fixture skips).
 
-Studio-side: physical printer/ruler validation at Actual Size / 100% remains required. Optional Phase 6 contact sheets, QR lookup, receipts, batch finishing, expanded calibration and statistics remain follow-up work, outside core delivery.
+Studio-side: physical printer/ruler validation at Actual Size / 100% remains required. Phase 6 tools and the requested Windows installer are included in Printora 3.1; see the current validation record.
+
+## Printora 3.1 tools and installer (2026-11-06)
+
+- [x] Offline reviewed batch finishing with per-item errors and independent durable jobs.
+- [x] Numbered contact sheets with explicit customer-field opt-ins.
+- [x] Local UUID-only order QR generation/image lookup and optional priced receipts.
+- [x] Exact calibration references, stored printer measurements and honest local statistics.
+- [x] 81 automated tests pass; source acceptance passes 36 checks with 68 photos.
+- [x] Program Files Setup configuration, automatic Desktop/Start menu shortcuts and Installed Apps entry.
+- [x] Final installed-app acceptance: 36 checks, 68 photos, bundled model only; install/upgrade/uninstall preservation passed.
+- [x] Promote to dist/Printora-3.1; all three previous EXE hashes unchanged.
+- [x] Review source for private/generated files and upload to main; hosted results are available in GitHub Actions.
 
 See `PHASE_REPORTS_3_0.md` for each phase's test result and `PROJECT_INFO.md` for current architecture/data rules. Checklists below are historical.
 

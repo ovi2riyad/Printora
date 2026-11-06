@@ -1,8 +1,8 @@
 # Studio Photo Maker 3.0 — inspection and implementation plan
 
-**Date:** 2026-11-06. **Status:** Core phases 0–5 implemented and validated; see `PHASE_REPORTS_3_0.md` and `VALIDATION.md`. Optional Phase 6 is follow-up work.
+**Date:** 2026-11-06. **Status:** Core phases 0–5 implemented and validated. The subsequent 3.1 update implements Phase 6 and the requested Windows Program Files installer/shortcuts; see current evidence in `PHASE_REPORTS_3_0.md` and `VALIDATION.md`. The detailed sections below retain the original planning record.
 
-**Authorization update:** After Phase 0 the user requested proceeding through core phases automatically, testing/fixing each before the next, then uploading to GitHub. The approval pauses quoted in this original design record are superseded. Current implementation/results are in `PROJECT_INFO.md` and `PHASE_REPORTS_3_0.md`; optional Phase 6 extras remain separate.
+**Authorization update:** After Phase 0 the user requested proceeding through core phases automatically, testing/fixing each before the next, then uploading to GitHub. The user subsequently requested Phase 6 along with installing Printora to Program Files and creating automatic Desktop/app-list shortcuts. Original approval pauses below are superseded. Current implementation/results are in `PROJECT_INFO.md` and `PHASE_REPORTS_3_0.md`.
 
 This is a plan for upgrading the existing Windows application. Features described as planned below are not implemented. The reviewed source is commit `6407a58d6ca17f1decf6bc3975592767a2a73e8e` on `main` in [ovi2riyad/Printora](https://github.com/ovi2riyad/Printora). The working tree was clean before this inspection.
 

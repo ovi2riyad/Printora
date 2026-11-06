@@ -99,6 +99,8 @@ class StudioManager:
         self.import_customer_id=None
         w.cropper.on_sources_imported=lambda paths:self.customers.assign_sources(self.import_customer_id,paths,w.tray)
         w.cropper.on_crops_saved=lambda:self.customers.reconcile(w.tray)
+        from app.ui.studio_tools import StudioTools
+        self.tools=StudioTools(self);w.stack.addWidget(self.tools)
         self.dashboard=self.make_dashboard();old=w.stack.widget(0);w.stack.removeWidget(old);w.stack.insertWidget(0,self.dashboard);old.deleteLater();w.stack.setCurrentIndex(0)
     def clear_import_customer(self):self.import_customer_id=None;self.import_customer.setText('Import customer: unassigned (optional)')
     def rebind(self):
@@ -128,7 +130,8 @@ class StudioManager:
         self.recents=QLabel('Quick access');outer.addWidget(self.recents)
         recent_row=QHBoxLayout();self.recent_customers=QComboBox();self.recent_orders=QComboBox();self.recent_jobs=QComboBox();self.frequent_recipes=QComboBox()
         for box in (self.recent_customers,self.recent_orders,self.recent_jobs,self.frequent_recipes):recent_row.addWidget(box,1)
-        outer.addLayout(recent_row);outer.addStretch(1)
+        outer.addLayout(recent_row)
+        tools=QPushButton('Studio tools — batch, contact sheets, order QR, receipts, calibration and statistics');tools.clicked.connect(lambda:self.show(self.tools));outer.addWidget(tools);outer.addStretch(1)
         self.recent_customers.activated.connect(self.recent_customer);self.recent_orders.activated.connect(self.recent_order);self.recent_jobs.activated.connect(lambda index:self.open_job(self.recent_jobs.itemData(index)) if index else None);self.frequent_recipes.activated.connect(self.quick_recipe)
         self.refresh();return page
     def refresh(self):
@@ -162,6 +165,7 @@ class StudioManager:
         self.w.timer.stop()
         if page is self.library:page.gallery.refresh()
         if page in (self.customer_page,self.order_page):page.refresh()
+        if page is self.tools:page.refresh()
         self.w.stack.setCurrentWidget(page)
         if page is self.multi:page.refresh()
     def customer_photos(self,id):self.library.customer_id=id;self.show(self.library)

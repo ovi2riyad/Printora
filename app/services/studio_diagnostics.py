@@ -77,6 +77,8 @@ def verify_studio(demo_dir,destination):
         w.db.set('quantity',6);w.db.set('layout','grid_2x2')
         from app.services.studio_v3_diagnostics import verify_management,verify_restored_management
         management_state,management_checks=verify_management(w,out,wait,portrait_items,joint_items)
+        from app.services.studio_tools_diagnostics import verify_tools
+        management_checks+=verify_tools(w,out,portrait_items,wait)
         backup=out/'studio-backup.zip';restored_root=data_root().with_name('StudioPhotoMaker-restored-check');stage=[]
         w.run(lambda:backup_data(data_root(),backup),lambda _:None);wait(w)
         w.run(lambda:prepare_restore(backup,restored_root),lambda result:stage.append(result));wait(w)

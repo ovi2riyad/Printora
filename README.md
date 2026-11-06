@@ -1,4 +1,4 @@
-# Studio Photo Maker 3.0
+# Printora 3.1 — Studio Photo Maker
 
 Offline Windows desktop software for studio photo preparation, customers, orders and exact-size A4 PDFs. Built with Python and PySide6. The standalone application **does not require Python**, an account, a server, or a paid AI service.
 
@@ -6,13 +6,19 @@ Source: [ovi2riyad/Printora](https://github.com/ovi2riyad/Printora). Developer/A
 
 ## Start
 
-The validated 3.0 release is placed in `dist/StudioPhotoMaker-v3`. Open `StudioPhotoMaker.exe` and keep the **whole folder**, including `_internal`, together. Previous packages remain at `dist/StudioPhotoMaker-v2` and `dist/StudioPhotoMaker`.
+Run **`dist/installers/Printora-3.1.0-Setup.exe`** to install. Accept the normal Windows administrator prompt. The default location is **`C:\Program Files\Printora`** on a standard Windows installation. Setup automatically creates a **Printora Desktop shortcut**, a **Start menu / All apps entry**, and an **Installed apps uninstall entry**. Launch Printora normally from either shortcut; Python is not required.
+
+Setup upgrades the same installation. Uninstall removes installed application files and shortcuts while retaining your photo/customer data at `%LOCALAPPDATA%\StudioPhotoMaker`. Back up that data before upgrades. The installed binary is `Printora.exe`; the portable edition at `dist/Printora-3.1/StudioPhotoMaker.exe` still needs its whole folder, including `_internal`. Older v3/v2/original packages are retained separately.
 
 A GitHub source checkout does not include generated EXEs, model weights, local tools, databases or private photographs. It is for developers. Standalone packages include the portrait model and work offline.
 
 ## Dashboard and normal workflow
 
 Nine modules: **Cropper, Portrait Maker, Joint Photo Maker, Multi Photo Print, Customers, Orders, Photo Library, Print Recipes, Settings & Backup**. Quick-access lists show recent customers/orders/jobs and frequently applied recipes.
+
+The **Studio tools** dashboard button adds batch preparation, contact sheets, order QR lookup, receipts, printer measurements and statistics. Batch finishing supports up to 200 library photos, local background removal, Fast/Balanced/Fine quality, framing, replacement color, tone factors and a recipe. Review each result, mark it reviewed, then save it. Errors are reported per photo. Open a saved result in its maker for correction or add reviewed jobs to a print session. Save successful results before starting another batch; unsaved review results are session-only.
+
+Contact sheets paginate numbered thumbnails; photo names can be disabled, and customer names/mobiles are opt-in. QR images contain only a local order UUID and resolve against this library or its backup; paste/scan the code or import its image to find the order. Receipts offer an optional amount/currency and opt-in contact fields/notes. These are simple receipts, not tax/accounting software. Calibration PDFs contain 100 mm rulers/square and portrait/joint boxes; stored per-printer measurements provide driver correction references without changing photo PDF sizes. Statistics distinguish generated-order copies from copies in orders staff marked Completed, and group order months in UTC.
 
 Optionally register/select a customer, import and crop their photos, review them in a maker, then add reviewed compositions to Multi Photo Print. Choose each person's copies, arrange/review the sheet, and create an order for searchable reprint history. Customer registration is optional.
 
@@ -106,10 +112,10 @@ On the original workstation:
 & '.\.tools\python\python.exe' -m PyInstaller --clean --noconfirm --distpath dist\candidate --workpath build\candidate StudioPhotoMaker.spec
 ```
 
-Substitute `.\.venv\Scripts\python.exe` on standard setups. `build.bat` uses candidate destinations. Packaging requires `%LOCALAPPDATA%\StudioPhotoMaker\models\u2net_human_seg.onnx`. Validate source and frozen candidates with isolated app data before promotion. See [VALIDATION.md](VALIDATION.md) and [THIRD_PARTY.md](THIRD_PARTY.md).
+Substitute `.\.venv\Scripts\python.exe` on standard setups. **`build.bat` creates both the candidate portable folder and Setup EXE**. Packaging requires `%LOCALAPPDATA%\StudioPhotoMaker\models\u2net_human_seg.onnx`. The first installer build downloads a checksum-pinned official Inno Setup compiler into ignored `.tools/inno`; this is a developer build tool. End users need no compiler or download. To use an installed compiler set `PRINTORA_ISCC` to its `ISCC.exe`. Use `build.bat --portable-only` to skip Setup, or `python -m scripts.build_release --skip-app --payload dist/Printora-3.1` to regenerate Setup after updating release documents. Validate source, frozen candidate and installation before promotion. See [VALIDATION.md](VALIDATION.md) and [THIRD_PARTY.md](THIRD_PARTY.md).
 
 ## Limits and optional follow-up
 
 No HEIC/RAW, PSD compatibility or cancellation inside an ONNX inference call. Difficult hair/scans and low-resolution inputs need review; software cannot recreate authentic missing detail. Browsing is bounded, but lightweight legacy library metadata remains for compatibility. Very large orders still need memory/time proportional to PDF content despite bounded preview/raw-image caches. Physical printer acceptance remains outstanding.
 
-Optional Phase 6 contact sheets, QR lookup, receipts, batch finishing, expanded calibration and statistics are outside this core delivery. Core 3.0 adds no Python dependency or mandatory online service.
+Phase 6 tools and the Windows installer are included in 3.1. No Python runtime dependency or mandatory online processing service was added. Complex-script PDF shaping can depend on the available font; review printed customer labels. Physical printer acceptance still requires printing and measuring on your equipment.

@@ -1,4 +1,4 @@
-# Studio Photo Maker 3.0 — project information and AI handoff
+# Printora 3.1 — project information and AI handoff
 
 Last reviewed: **2026-11-06**. This describes implemented source, not a replacement scaffold. Read this file and `README.md`, inspect the active source, and run relevant checks before changing behavior. Executed results are in `PHASE_REPORTS_3_0.md` and `VALIDATION.md`; architecture planning/history is in `DEVELOPMENT_PLAN_3_0.md`.
 
@@ -6,15 +6,16 @@ Last reviewed: **2026-11-06**. This describes implemented source, not a replacem
 
 Studio Photo Maker is an offline Windows photography workstation: import/crop, numbered library, portrait/joint editing, customers, orders/reprint, mixed-composition A4 printing, recipes and backup. It uses Python 3.12/PySide6 Widgets, SQLite, Pillow/OpenCV, ONNX Runtime CPU and ReportLab. It is not a website and requires no cloud account/server/paid image API. No core 3.0 Python dependency was added.
 
-Repository: [ovi2riyad/Printora](https://github.com/ovi2riyad/Printora), branch `main`. Repository name does not rename the application. The user authorized implementing core phases sequentially, testing/fixing after every phase, then uploading the completed source. This supersedes the original master prompt's inter-phase approval pauses. Optional Phase 6 extras remain outside the core delivery; do not mark them implemented.
+Repository: [ovi2riyad/Printora](https://github.com/ovi2riyad/Printora), branch `main`. The 3.1 application and installer use the Printora name; existing application-data identity stays StudioPhotoMaker to preserve user work. The user authorized sequential implementation/test/fix/upload, then Phase 6 together with a Program Files installer and automatic shortcuts. This supersedes original planning approval gates.
 
 Release destination after candidate acceptance:
 
 ```text
-dist/StudioPhotoMaker-v3/StudioPhotoMaker.exe
+dist/Printora-3.1/StudioPhotoMaker.exe
+dist/installers/Printora-3.1.0-Setup.exe
 ```
 
-Distribute the entire folder, including `_internal`; end users do not need Python. `dist/StudioPhotoMaker-v2` and `dist/StudioPhotoMaker` are preserved rollback packages. Source checkouts exclude all generated packages/models/tools/private photographs. A source push is separate from publishing a GitHub Release asset. See `VALIDATION.md` for actual final package acceptance, rather than assuming a directory name proves validation.
+Prefer distributing Setup. It installs `Printora.exe` and `_internal` to `{commonpf64}\Printora` (normally `C:\Program Files\Printora`) with all-users Desktop/Start menu shortcuts and an uninstall entry. Installation requires elevation; normal app use does not. For portable distribution keep the entire folder. End users need no Python. v3, v2 and original packages remain preserved. Source checkouts exclude generated packages/models/tools/private photographs. A source push is separate from publishing a binary GitHub Release. See `VALIDATION.md` for executed evidence.
 
 Keep the existing architecture and workflows. Do not rebuild the project from scratch, switch frameworks, move user data to temporary build folders, upload private demos, or use production app data for destructive tests.
 
@@ -270,7 +271,7 @@ On a fresh developer machine use Python 3.12 x64 and `setup.bat`, or a venv with
 
 The spec fails without `%LOCALAPPDATA%/StudioPhotoMaker/models/u2net_human_seg.onnx`. It collects ONNX CPU libraries/OpenCV data and excludes heavy unused packages/Qt WebEngine. Do not build while LOCALAPPDATA points at an empty acceptance sandbox. Use the normal installed model when building, then test the frozen package with fresh app data and no external model override.
 
-Current expanded local suite contains **74 tests**; see `VALIDATION.md` for final execution/timing. Pre-3.0 baseline was 57. Tests include actual Qt mouse/selection/edit/order/reprint/session workflows, exact PDF placements, customer phones/IDs/archive/associations, immutable histories, migration rollback/future-schema refusal, cache references and cross-path restores. CI skips three private-demo cases and one previous-release-copy case when excluded local fixtures are absent. Do not count those as verified demo behavior on CI.
+Current expanded local suite contains **81 tests**; see `VALIDATION.md` for final execution/timing. Pre-3.0 baseline was 57. Tests include actual Qt mouse/selection/edit/order/reprint/session workflows, exact PDF placements, customer phones/IDs/archive/associations, immutable histories, migration rollback/future-schema refusal, cache references and cross-path restores. The seven tools tests also cover QR encode/decode, private-field opt-ins, receipt price validation, calibration geometry, batch failures/source preservation, explicit review/save, statistics and installer configuration. CI skips three private-demo cases and one previous-release-copy case when excluded local fixtures are absent. Do not count those as verified demo behavior on CI.
 
 CLI `--verify-studio DEMO_DIR OUT_DIR` exercises old workflows plus 3.0 customer/mixed-session/history/restore/reprint behavior. It creates data/jobs/customers/orders, so **always isolate LOCALAPPDATA**. Example source acceptance in a child PowerShell process:
 
@@ -284,7 +285,7 @@ $env:QT_QPA_FONTDIR = 'C:\Windows\Fonts'
 
 Use fresh directory names. Environment assignments above should run in a child shell; restore prior values if executing them in a long-lived terminal. For frozen acceptance clear `STUDIO_VERIFY_MODEL_DIR`, preserve fresh data, and launch the candidate EXE with the same CLI arguments. Offscreen Windows screenshots need a font directory for readable text; native Qt Windows does not need that test override.
 
-Other CLI modes: `--smoke-test OUTPUT.png`, older `--verify-cropper SOURCE OUT` and `--verify-runtime SOURCE OUT`. Dashboard screenshots alone do not prove processing. Original demo counts remain 9/11/18 for IMG_0007/8/9, 8/9/9 for portrait sheets and four combined joint inputs: **68** prepared photos. Expanded acceptance has **29** checks. Diagnostics use synthetic contacts, and evidence/private photographs remain under ignored local folders.
+Other CLI modes: `--smoke-test OUTPUT.png`, older `--verify-cropper SOURCE OUT` and `--verify-runtime SOURCE OUT`. Dashboard screenshots alone do not prove processing. Original demo counts remain 9/11/18 for IMG_0007/8/9, 8/9/9 for portrait sheets and four combined joint inputs: **68** prepared photos. Expanded acceptance now has **36** checks, including the seven studio-tools checks. Diagnostics use synthetic contacts, and evidence/private photographs remain under ignored local folders.
 
 Before promotion: full tests, source acceptance, frozen bundled-only acceptance, visual review, original/source hashes and previous-release EXE hashes. Copy updated README/validation/checklist/attribution/handoff alongside the validated package. No code change appears in the EXE until rebuilt. Update source/docs, review staged private/generated paths, push without force, and inspect hosted Windows CI separately. Do not commit dist, models, databases, backups, .tools, or Demo.
 
@@ -297,6 +298,24 @@ Before promotion: full tests, source acceptance, frozen bundled-only acceptance,
 - Library links span two databases through stable logical IDs; preserve reconciliation/exclusions and asset-reference scanning when extending them.
 - Snapshot paths still depend on assets being available. App-managed sources are retained and backups remap them; external files changed outside the app cannot be assumed unchanged merely because an order's settings are frozen.
 - Very large customer/order lists expose bounded recent/search results; deep cursor pagination/advanced phone indexes can be added if real workloads demand it. Lightweight photo metadata remains for compatibility.
-- Optional Phase 6 contact sheets/QR/receipts/batch/calibration expansion/statistics are not implemented in this core delivery.
+- Receipts are simple studio documents, not tax/accounting records. QR lookup requires the matching local order database or restored backup. Contact-sheet cells truncate long labels to prevent overlap. Complex-script font shaping is not guaranteed.
 
 For the next change: inspect the active path, preserve old dataclass defaults/serials/assets, keep GUI/worker ownership intact, extend backups for new references, test against isolated current and previous-release data, and rebuild/validate the actual frozen candidate before release claims. Report executed evidence and limits plainly.
+
+## 15. Phase 6 tools and installer (3.1)
+
+`app/services/studio_tools.py` contains atomic contact-sheet/receipt/QR/calibration exports, strict UUID-only QR parsing, batch preparation and local statistics. `app/ui/studio_tools.py` is reached through the dashboard's Studio tools button. `studio_tools_diagnostics.py` extends the existing acceptance workflow. These reuse existing services and add no Python dependency: OpenCV supplies QR encoding/decoding, ReportLab supplies PDFs, and a locally available Windows font can be embedded without shipping that font file.
+
+Batch inputs are existing durable library assets, up to 200 at once. Each independent worker result contains a Job, preview or error, and explicit reviewed/saved flags. Successful items start unreviewed. Only reviewed items can be saved on the GUI thread; jobs preserve library provenance and customer links. Save results before another batch; unsaved results are memory-only. Makers can reopen saved results for edits, and reviewed saved jobs can be copied to a print session. Processing never modifies source pixels. Worker options include background, quality, framing, recipe and four tone factors; matching recipe kind is required. One combined joint asset remains a single layer.
+
+Contact labels default to serial/photo name; customer names/mobiles require explicit selection. Receipt customer fields and notes also default off; total amount/currency is optional. QR payloads are `printora:order:<32 lowercase hex UUID>`, without names, mobiles, paths or network requests. Image decode runs in the worker; lookup uses GUI-owned OrderStore. Export destinations pass the shared original/app-data/historical-PDF protections. Statistics count generated-order copies once per item despite repeated events, distinguish staff-completed orders, report unknown legacy import dates, and use UTC order months.
+
+Printer measurements are stored in existing JSON config `printer_profiles`, keyed by printer name, with measured width/height and reference X/Y factors. Calibration PDF geometry remains nominal; no silent scaling is introduced. No new database migration is needed for these tools; ordinary jobs/config are already backed up.
+
+`app/version.py` owns version 3.1.0 and shell identity Printora.Desktop. `app/core/windows.py` sets the Windows AppUserModelID and holds a named process-lifetime mutex so Setup detects the running app. Source/frozen application icons use the code-native `assets/printora.svg`, converted to ICO by the build helper. `StudioPhotoMaker.spec` packages that icon and the existing required model.
+
+`build.bat` runs `python -m scripts.build_release`: separate candidate build, required-model check, documentation/icon preparation, then Inno compilation. `--portable-only` skips Setup; `--skip-app --payload PATH` recompiles Setup for an existing complete package. `scripts/setup_installer.py` finds an existing compiler or downloads official Inno Setup 7.1.1 x64 with a pinned SHA-256 into ignored `.tools`; `PRINTORA_ISCC` can override the compiler location. End-user installation/processing needs no Python, compiler, model download or network service.
+
+`installer/Printora.iss` uses stable AppId `4F077504-7244-4BEB-B290-FE8758932B47`, 64-bit Program Files, administrative Setup, automatic common Desktop/Start menu links, Windows Installed Apps registration and normal non-elevated app launching. Setup renames only the installed EXE to Printora.exe; the onedir `_internal` stays adjacent. There is no wildcard UninstallDelete rule and no app-data deletion. Preserve AppId and the existing `%LOCALAPPDATA%\StudioPhotoMaker` location across upgrades.
+
+`scripts/verify_installer.py --payload PATH --root .tools/FRESH_FOLDER` compiles the same script with a separate test AppId, non-admin privileges and isolated app/shortcut paths. It verifies actual install, registration, shortcut targets, upgrade preservation, installed EXE launch, all 36 workflow checks with the bundled model, and uninstall retention. This protects real user data and does not claim a real elevated Program Files install was executed. Production directives are separately checked by the automated suite. Evidence is in `VALIDATION.md`.
