@@ -18,15 +18,18 @@ The pale NID fix combines contrast thresholds and small edge-gap closing on dete
 
 | Executed local check | Result |
 |---|---|
-| Complete cleaned-source suite | **533 passed, 13 skipped**, no failures/errors; two existing Pillow warnings; 288.98 s |
+| Complete cleaned-source suite before viewport follow-up | **533 passed, 13 skipped**, no failures/errors; two existing Pillow warnings; 288.98 s |
 | Focused native Windows tests | **42 passed, 7 skipped**, no failures; credits, payload, panel/folder and NID detector checks |
 | Staged-source clean checkout, focused checks | **23 passed, 7 skipped**, no failures; imports verified from the exported source tree |
 | Frozen simplified workflow, 100% / 200% | **32 checks passed** at each scale, including About credits |
 | Frozen document / stabilization workflows | **25 / 31 checks passed** |
 | Frozen synthetic two-photo sheet | **8 checks passed**, including real bundled CPU inference, crop extraction, portrait/joint composition, source preservation and PDF output |
 | Changed-payload isolated installer | **6 checks passed**: files/model, shortcuts/registration, upgrade retention, installed startup, installed 32-check workflow, uninstall retention |
+| Native viewport follow-up | **74 passed**, no failures/skips; includes the 512 × 384 logical-desktop regression in Light/Dark and existing native display-scale checks |
 
 The 13 full-suite skips require deleted private demonstration images or a historical local acceptance database. No source regression was deleted to hide those skips. All device calls in synthetic workflow checks are intercepted before launching a driver helper. The model check uses generated artwork; it proves runtime operation, not photographic segmentation quality. A face-specific legacy diagnostic cannot frame that artwork and is not counted as a successful check.
+
+The first hosted run caught an additional small-desktop failure at 200% scaling: the old 640-pixel width floor exceeded a 512-pixel logical viewport. Window minimums now respect the available desktop rather than enforcing that floor. A regression reproduced the old failure before the correction; the fix passed the 74-test native follow-up and was resubmitted to the full Windows workflow. The release links its final hosted run.
 
 Frozen checks use a different working directory, Python-free PATH, fresh isolated app data and only the bundled model. The installer verifier uses a distinct test identity/location and leaves production data untouched. Final documentation copying changes no tested application code. Hosted CI is authoritative for its own clean Windows checkout; it does not replace bundled-model or installer acceptance. Release assets include an installer checksum.
 

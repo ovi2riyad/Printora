@@ -46,7 +46,8 @@ class StudioWindow(QMainWindow):
         super().__init__();self.setWindowTitle(f'Printora {VERSION} — Studio Photo Maker');self.resize(1360,900);self.setMinimumSize(1050,740)
         screen=QApplication.primaryScreen()
         if screen:
-            available=screen.availableGeometry();self.setMinimumSize(min(1050,max(640,available.width()-20)),min(740,max(250,available.height()-50)));self.resize(min(1360,available.width()-20),min(900,available.height()-50))
+            available=screen.availableGeometry();width=max(1,available.width()-20);height=max(1,available.height()-50)
+            self.setMinimumSize(min(1050,width),min(740,height));self.resize(min(1360,width),min(900,height))
         icon=Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parents[2]))/'assets'/'Printora.ico'
         if icon.is_file():self.setWindowIcon(QIcon(str(icon)))
         self.db=Database();self.job=Job();self.photo=None;self.mode='portrait';self.dirty=False;self.busy=False;self.syncing=False;self.workers=set();self.undo=[];self.redo=[];self.tray=CropTray(root=data_root()/'library')

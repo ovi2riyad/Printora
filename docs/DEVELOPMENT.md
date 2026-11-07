@@ -27,6 +27,7 @@ Printora is an existing Python/PySide6 Windows desktop application. Continue its
 - Append compatible dataclass defaults; retain old JSON and order snapshots. Jobs use UPSERT rather than destructive REPLACE of FK-referenced rows.
 - GUI-owned main SQLite is not worker-safe. The library connection uses an RLock with cross-thread access enabled. Read settings before workers; copy mutable inputs; update widgets/main database in GUI callbacks.
 - Retain document-generation guards around Save/Discard/Cancel, queued scans and worker callbacks. A discarded job must not be saved by a stale callback or revive through undo/navigation.
+- Bound main-window minimums to the available logical desktop; high-DPI displays can expose widths below 640 pixels. Keep workspace overflow scrollable rather than enlarging the application beyond the screen.
 - Optional preference corruption recovers only affected values and preserves raw rows for diagnosis. Do not reset customer/library/job data as error handling.
 - Use shared export guards, explicit file extensions and atomic replacement. Existing ordinary JSON export consent does not authorize overwriting source images, app data or historical artifacts.
 - Backups validate required assets as well as manifest hashes, snapshot SQLite/WAL, stage restores, remap paths and preserve the previous data directory. Cleanup must check saved-job/order/session references.

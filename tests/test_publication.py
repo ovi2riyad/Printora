@@ -26,3 +26,22 @@ def test_payload_contains_current_guides_and_credits(tmp_path,monkeypatch):
     for name in ('README.md','CREDITS.md','THIRD_PARTY.md','docs/DEVELOPMENT.md','docs/VALIDATION.md'):
         assert (payload/name).read_bytes()==(build_release.ROOT/name).read_bytes()
     assert AUTHOR in (payload/'CREDITS.md').read_text(encoding='utf-8')
+
+
+def test_main_window_fits_a_sub640_logical_desktop(tmp_path,monkeypatch):
+    from PySide6.QtCore import QRect
+    from app.ui.studio_window import StudioWindow
+    monkeypatch.setenv('LOCALAPPDATA',str(tmp_path/'data'))
+    app=QApplication.instance() or QApplication([])
+    class SmallDesktop:
+        def availableGeometry(self):return QRect(0,0,512,384)
+    monkeypatch.setattr(QApplication,'primaryScreen',lambda:SmallDesktop())
+    window=StudioWindow();window.show()
+    try:
+        for theme in ('Light','Dark'):
+            window.shell.set_theme(theme)
+            for _ in range(8):app.processEvents()
+            assert window.minimumSize().width()<=512 and window.size().width()<=512
+            assert window.minimumSize().height()<=384 and window.size().height()<=384
+    finally:
+        window.timer.stop();window.invalidate_autosave();window.dirty=False;window.close();app.processEvents()
