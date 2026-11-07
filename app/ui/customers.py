@@ -14,7 +14,7 @@ class CustomerDialog(QDialog):
         buttons=QDialogButtonBox(QDialogButtonBox.Save|QDialogButtonBox.Cancel);buttons.accepted.connect(self.accept);buttons.rejected.connect(self.reject);form.addRow(buttons);self.resize(550,400)
     def accept(self):
         values={k:w.text() for k,w in self.fields.items()}
-        duplicates=self.store.duplicates(values['mobile'],self.customer.get('id'))
+        duplicates=self.store.duplicates(values['mobile'],self.customer.get('id'))+self.store.duplicates(values['alternative_mobile'],self.customer.get('id'))
         if duplicates:
             answer=QMessageBox.question(self,'Shared mobile number','This number already belongs to a customer. Save a separate customer with the same number? Choose No to return and select the existing customer.',QMessageBox.Yes|QMessageBox.No,QMessageBox.No)
             if answer!=QMessageBox.Yes:return

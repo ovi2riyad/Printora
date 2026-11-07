@@ -1,4 +1,5 @@
 """Sheet/phone cropping workspace and the shared session-photo picker."""
+from app.services.user_folders import dialog_folder,dialog_output
 import copy
 from pathlib import Path
 from PIL import Image
@@ -35,7 +36,18 @@ class CropOutline(QGraphicsPolygonItem):
     def corner_moved(self,index,point):
         if self.updating:return
         polygon=self.polygon()
-        if index<4:polygon[index]=point
+        if getattr(self,'rectangular',False):
+            if index<4:
+                rect=QRectF(polygon[(index+2)%4],point).normalized()
+            else:
+                rect=polygon.boundingRect()
+                if index==4:rect.setTop(point.y())
+                elif index==5:rect.setRight(point.x())
+                elif index==6:rect.setBottom(point.y())
+                else:rect.setLeft(point.x())
+                rect=rect.normalized()
+            polygon=QPolygonF([rect.topLeft(),rect.topRight(),rect.bottomRight(),rect.bottomLeft()])
+        elif index<4:polygon[index]=point
         else:
             first=index-4;second=(first+1)%4;delta=point-(polygon[first]+polygon[second])/2;polygon[first]+=delta;polygon[second]+=delta
         self.setPolygon(polygon);self.updating=True
@@ -63,9 +75,10 @@ class CropCanvas(QGraphicsView):
     def select_region(self,index):
         for i,item in enumerate(self.outlines):item.setSelected(i==index)
     def mousePressEvent(self,e):
+        if getattr(self,'pan_mode',False):super().mousePressEvent(e);return
         item=self.itemAt(e.position().toPoint())
         if item is not None and isinstance(item.parentItem(),CropOutline) and not isinstance(item,Corner):item=item.parentItem()
-        if self.has_image and e.button()==Qt.LeftButton and not isinstance(item,(CropOutline,Corner)):
+        if self.has_image and e.button()==Qt.LeftButton and (getattr(self,'draw_mode',False) or not isinstance(item,(CropOutline,Corner))):
             self.anchor=self.mapToScene(e.position().toPoint());pen=QPen(QColor('#d48429'),2);pen.setCosmetic(True);self.drawing=self.scene().addRect(QRectF(self.anchor,self.anchor),pen);return
         super().mousePressEvent(e)
     def mouseMoveEvent(self,e):
@@ -73,8 +86,9 @@ class CropCanvas(QGraphicsView):
         super().mouseMoveEvent(e)
     def mouseReleaseEvent(self,e):
         if self.drawing is not None:
+            self.draw_mode=False
             rect=self.drawing.rect().intersected(self.sceneRect());self.scene().removeItem(self.drawing);self.drawing=None;self.anchor=None
-            if min(rect.width(),rect.height())>=20:self.drawn.emit(CropRegion([(rect.left(),rect.top()),(rect.right(),rect.top()),(rect.right(),rect.bottom()),(rect.left(),rect.bottom())]))
+            if min(rect.width(),rect.height())>=getattr(self,'minimum_draw_pixels',20):self.drawn.emit(CropRegion([(rect.left(),rect.top()),(rect.right(),rect.top()),(rect.right(),rect.bottom()),(rect.left(),rect.bottom())]))
             return
         super().mouseReleaseEvent(e)
     def resizeEvent(self,e):super().resizeEvent(e);self.fitInView(self.sceneRect(),Qt.KeepAspectRatio)
@@ -105,15 +119,17 @@ class PreparedPicker(QDialog):
         self.list.check_changed(item)
 
 class Cropper(QWidget):
-    def __init__(self,tray,run,notify,use,parent=None):
+    def __init__(self,tray,run,notify,use,parent=None,db=None):
         super().__init__(parent);self.tray=tray;self.run=run;self.notify=notify;self.use=use;self.source_paths=[];self.current_image=None;self.current_path='';self.regions=[];self.source_states={};self.updating=False;self.crop_undo={};self.crop_redo={};self.last_regions=[]
-        self.on_sources_imported=None;self.on_crops_saved=None
+        self.on_sources_imported=None;self.on_crops_saved=None;self.settings_db=db
         self.setStyleSheet('QPushButton {padding:6px 9px;font-size:12px;}')
         layout=QVBoxLayout(self);layout.setContentsMargins(0,0,0,0);header=QLabel('Cropper');header.setObjectName('title');layout.addWidget(header)
         layout.addWidget(QLabel('Import a scan sheet or camera photo. Separate each person, then keep their crop in the tray.'))
         row=QHBoxLayout();self.button('Import images / scan sheets',self.import_sources,row);self.sources=QComboBox();self.sources.currentIndexChanged.connect(self.select_source);row.addWidget(self.sources,1);self.button('Auto-detect photos',self.detect,row);self.button('Use whole image',self.full_image,row);self.button('Fit sheet',lambda:self.canvas.fitInView(self.canvas.sceneRect(),Qt.KeepAspectRatio),row);layout.addLayout(row)
-        body=QHBoxLayout();layout.addLayout(body,1);self.canvas=CropCanvas();self.canvas.selected.connect(self.select_region);self.canvas.changed.connect(self.region_changed);self.canvas.drawn.connect(self.add_region);body.addWidget(self.canvas,1)
-        self.side_tabs=QTabWidget();self.side_tabs.setMinimumWidth(330);self.side_tabs.setMaximumWidth(420);body.addWidget(self.side_tabs);region_panel=QWidget();self.side_tabs.addTab(region_panel,'Crop regions');side=QVBoxLayout(region_panel);side.setSpacing(8);side.addWidget(QLabel('Move corners or edge handles to refine a crop.'))
+        body=QHBoxLayout();layout.addLayout(body,1);self.canvas=CropCanvas();self.canvas.selected.connect(self.select_region);self.canvas.changed.connect(self.region_changed);self.canvas.drawn.connect(self.add_region)
+        self.side_tabs=QTabWidget();region_panel=QWidget();self.side_tabs.addTab(region_panel,'Crop regions');side=QVBoxLayout(region_panel);side.setSpacing(8);side.addWidget(QLabel('Move corners or edge handles to refine a crop.'))
+        from app.ui.panels import AdaptivePanel,splitter
+        self.properties_panel=AdaptivePanel(self.side_tabs,db,'cropper','Crop / Library',[('Crop regions','tools',lambda:self.side_tabs.setCurrentIndex(0)),('Saved library','library',lambda:self.side_tabs.setCurrentIndex(1))]);body.addWidget(splitter(self.canvas,self.properties_panel))
         self.region_list=QListWidget();self.region_list.setMinimumHeight(100);self.region_list.currentRowChanged.connect(self.canvas.select_region);side.addWidget(self.region_list,1)
         row=QHBoxLayout();self.button('Rotate left',lambda:self.rotate(90),row);self.button('Rotate right',lambda:self.rotate(-90),row);self.button('Delete',self.remove_region,row);side.addLayout(row)
         row=QHBoxLayout();self.button('Undo crop',self.undo_crop,row);self.button('Redo crop',self.redo_crop,row);self.button('Preview crop',self.preview_crop,row);side.addLayout(row)
@@ -134,6 +150,14 @@ class Cropper(QWidget):
         self.hint=QLabel('Wheel to zoom; double-click a region to inspect it. Drag an empty area to draw a crop. Imported sources and numbered crops are saved automatically.');self.hint.setWordWrap(True);layout.addWidget(self.hint)
         self.restore_sources();self.refresh_tray()
     def restore_sources(self):
+        aliases=getattr(self.tray,'source_aliases',{})
+        if aliases:
+            self.current_path=aliases.get(self.current_path,self.current_path)
+            for name in ('source_states','crop_undo','crop_redo'):
+                state=getattr(self,name,{})
+                for old,new in aliases.items():
+                    if old in state:state[new]=state.pop(old)
+            self.source_paths=[aliases.get(p,p) for p in self.source_paths]
         self.source_names={};self.sources.blockSignals(True)
         for serial,name,path in self.tray.sources():
             self.source_names[path]=name
@@ -142,7 +166,7 @@ class Cropper(QWidget):
     def button(self,text,fn,layout):
         b=QPushButton(text);b.clicked.connect(fn);layout.addWidget(b);return b
     def import_sources(self,checked=False,paths=None):
-        if paths is None:paths,_=QFileDialog.getOpenFileNames(self,'Import scan sheets or phone photographs','','Images (*.jpg *.jpeg *.png *.webp *.bmp *.tif *.tiff)')
+        if paths is None:paths,_=QFileDialog.getOpenFileNames(self,'Import scan sheets or phone photographs',dialog_folder(self.settings_db,'input',self.notify),'Images (*.jpg *.jpeg *.png *.webp *.bmp *.tif *.tiff)')
         if not paths:return
         def read():
             valid=[];errors=[]
@@ -157,7 +181,9 @@ class Cropper(QWidget):
             for path in result[0]:
                 if path not in self.source_paths:self.source_paths.append(path);self.sources.addItem(Path(path).name)
             self.sources.blockSignals(False)
-            if result[1]:self.notify('Some imports failed: '+'; '.join(result[1]))
+            if not hasattr(self,'import_summary'):
+                self.import_summary=QLabel();self.import_summary.setWordWrap(True);self.layout().addWidget(self.import_summary)
+            self.import_summary.setText(f'{len(result[0])} imported; {len(result[1])} failed.'+('\n'+'\n'.join(result[1]) if result[1] else ''))
             if result[0]:self.sources.blockSignals(True);index=self.source_paths.index(result[0][0]);self.sources.setCurrentIndex(index);self.sources.blockSignals(False);self.select_source(index)
         self.run(read,done)
     def select_source(self,index):

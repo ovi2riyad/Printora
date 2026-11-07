@@ -8,6 +8,7 @@ import threading
 import hashlib
 import shutil
 import json
+import os
 from PIL import Image
 
 @dataclass
@@ -61,6 +62,8 @@ class CropTray:
             self.conn=sqlite3.connect(self.root/'library.db',check_same_thread=False)
             self.conn.execute('PRAGMA journal_mode=WAL')
             self.conn.executescript('CREATE TABLE IF NOT EXISTS photos(serial INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE,name TEXT,source TEXT,asset TEXT,thumb TEXT,width INTEGER,height INTEGER,deleted INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS sources(serial INTEGER PRIMARY KEY AUTOINCREMENT,digest TEXT UNIQUE,name TEXT,asset TEXT); CREATE TABLE IF NOT EXISTS source_regions(asset TEXT PRIMARY KEY,payload TEXT);')
+            self.conn.execute('CREATE TABLE IF NOT EXISTS source_repairs(old TEXT PRIMARY KEY,new TEXT,digest TEXT)')
+            self.source_aliases={a:b for a,b in self.conn.execute('SELECT old,new FROM source_repairs')}
             columns={row[1] for row in self.conn.execute('PRAGMA table_info(photos)')}
             with self.conn:
                 self.conn.execute('BEGIN IMMEDIATE')
@@ -137,13 +140,29 @@ class CropTray:
         with self.lock,self.conn:
             row=self.conn.execute('SELECT asset,serial FROM sources WHERE digest=?',(digest,)).fetchone()
             if row and Path(row[0]).exists():return row[0]
-            folder=self.root/'sources';folder.mkdir(exist_ok=True);target=folder/(digest+Path(path).suffix.lower());tmp=target.with_suffix('.tmp')
-            try:shutil.copyfile(path,tmp);tmp.replace(target)
+            folder=self.root/'sources';folder.mkdir(exist_ok=True);target=folder/(digest+Path(path).suffix.lower());tmp=folder/(uuid.uuid4().hex+'.tmp')
+            if target.exists():
+                with target.open('rb') as stream:existing=hashlib.file_digest(stream,'sha256').hexdigest()
+                if existing!=digest:raise ValueError('Managed source destination contains different bytes; retained without replacement')
+            try:
+                if not target.exists():
+                    shutil.copyfile(path,tmp)
+                    with tmp.open('rb') as stream:copied=hashlib.file_digest(stream,'sha256').hexdigest()
+                    if copied!=digest:raise ValueError('Source changed during import; retry explicitly')
+                    # Windows rename refuses an existing target, even after the check above.
+                    if os.name=='nt':tmp.rename(target)
+                    else:os.link(tmp,target)
             finally:
                 if tmp.exists():tmp.unlink()
             if row:
                 self.conn.execute('UPDATE sources SET asset=? WHERE serial=?',(str(target),row[1]))
-                if row[0]!=str(target):self.conn.execute('UPDATE source_regions SET asset=? WHERE asset=?',(str(target),row[0]))
+                if row[0]!=str(target):
+                    self.conn.execute('UPDATE source_regions SET asset=? WHERE asset=?',(str(target),row[0]))
+                    self.conn.execute('UPDATE photos SET source=? WHERE source=?',(str(target),row[0]))
+                    self.conn.execute('INSERT OR REPLACE INTO source_repairs VALUES(?,?,?)',(row[0],str(target),digest))
+                    self.source_aliases[row[0]]=str(target)
+                    for item in self.items+self.hidden:
+                        if item.source==row[0]:item.source=str(target)
             else:self.conn.execute('INSERT INTO sources(digest,name,asset) VALUES(?,?,?)',(digest,Path(path).name,str(target)))
             return str(target)
     def sources(self):
@@ -206,6 +225,22 @@ def detect_photo_regions(image):
     # Content contours recover prints whose faint white borders have broken edges.
     _,ink=cv2.threshold(gray,220,255,cv2.THRESH_BINARY_INV);ink=cv2.morphologyEx(ink,cv2.MORPH_CLOSE,np.ones((9,9),np.uint8))
     contours,_=cv2.findContours(ink,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+    # A single close-up print can fill almost the entire input. The old upper
+    # area limits rejected its real boundary and could retain facial/clothing
+    # contours instead. Prefer a solid near-frame photo boundary, not a face.
+    # This deliberately does not impose the maker's physical aspect ratio.
+    for c in sorted(contours,key=cv2.contourArea,reverse=True):
+        area=cv2.contourArea(c);rect=cv2.minAreaRect(c);w,h=rect[1]
+        if not total*.60<area or min(w,h)<=0 or area/(w*h)<.94:continue
+        quad=order_quad(cv2.boxPoints(rect));xs=quad[:,0];ys=quad[:,1]
+        if min(xs)>sample.width*.12 or min(ys)>sample.height*.12 or max(xs)<sample.width*.88 or max(ys)<sample.height*.88:continue
+        # Require a light paper surround. A borderless camera portrait should
+        # retain its whole frame instead of being cropped to its clothing.
+        if (min(xs)<1 or min(ys)<1 or max(xs)>sample.width-2 or max(ys)>sample.height-2):continue
+        mask=np.zeros(gray.shape,np.uint8);cv2.fillConvexPoly(mask,quad.astype(np.int32),255)
+        if np.mean(ink[mask>0]>0)<.70:continue
+        sx=image.width/sample.width;sy=image.height/sample.height
+        return [CropRegion([(float(x*sx),float(y*sy)) for x,y in quad])]
     for c in contours:
         area=cv2.contourArea(c)
         if not total*.007<area<total*.3:continue

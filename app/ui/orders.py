@@ -1,4 +1,5 @@
 """Order review, historical snapshots and reprint without reprocessing photos."""
+from app.services.user_folders import dialog_folder,dialog_output
 from pathlib import Path
 from PySide6.QtCore import Qt,QUrl
 from PySide6.QtGui import QDesktopServices
@@ -8,6 +9,7 @@ from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QLineEdit,
 from app.services.orders import STATUSES,write_order_pdf
 from app.services.layout import resize_copies
 from app.ui.print_options import PrintOptions
+from app.services.record_recovery import recoverable_record,checked_document
 
 
 class OrderDialog(QDialog):
@@ -46,15 +48,20 @@ class OrdersPage(QWidget):
         for label,fn in [('From current job',self.from_current),('From saved job',self.from_saved),('Reprint / duplicate',self.reprint),('Generate PDF',self.export),('Open last PDF',self.open_pdf),('Completed',lambda:self.set_status('Completed')),('Cancel order',lambda:self.set_status('Cancelled'))]:
             b=QPushButton(label);b.clicked.connect(fn);row.addWidget(b)
         outer.addLayout(row);self.error=QLabel();self.error.setWordWrap(True);outer.addWidget(self.error)
+        direct=QPushButton('Print');direct.setObjectName('primary');direct.clicked.connect(self.print_current);outer.addWidget(direct)
         self.search.textChanged.connect(self.refresh);self.status.currentIndexChanged.connect(self.refresh);self.date.currentIndexChanged.connect(self.refresh);self.list.currentRowChanged.connect(self.details);self.refresh()
     def clear_customer(self):self.customer_id=None;self.refresh()
+    @recoverable_record
+    def print_current(self):
+        if self.current_id:self.manager.w.hardware.print_job(checked_document(self.store.load_job(self.current_id)))
     def refresh(self,*_):
         old=self.current_id;self.rows=self.store.search(self.search.text(),self.customer_id,self.status.currentText() if self.status.currentIndex() else '',[None,7,30][self.date.currentIndex()]);self.list.blockSignals(True);self.list.clear()
         self.list.addItems([f'O{r["serial"]:06d} · {r["customer_name"] or "Unassigned"} · {r["status"]} · {r["created"]}' for r in self.rows]);index=next((i for i,r in enumerate(self.rows) if r['id']==old),0 if self.rows else -1);self.list.setCurrentRow(index);self.list.blockSignals(False);self.details()
+    @recoverable_record
     def details(self,*_):
         i=self.list.currentRow();self.loading=True;self.items.setRowCount(0);self.events.clear();self.job=None
         if not 0<=i<len(self.rows):self.current_id=None;self.info.setText('Create an order from a saved composition, or find a previous order to reprint.');self.loading=False;return
-        order=self.rows[i];self.current_id=order['id'];self.job=self.store.load_job(order['id'])
+        order=self.rows[i];self.current_id=order['id'];self.job=checked_document(self.store.load_job(order['id']))
         self.info.setText(f'O{order["serial"]:06d} · {order["customer_name"] or "No customer"} · {order["customer_mobile"]}\n{order["status"]} · {order["created"]}\n{order["notes"]}\nHistorical orders are preserved. Reprint creates a new draft with the original settings for review.')
         for index,p in enumerate(self.job.photos):
             self.items.insertRow(index)
@@ -88,13 +95,15 @@ class OrdersPage(QWidget):
     def from_current(self):
         if self.manager.w.photo and self.manager.w.photo.layers:self.create(self.manager.w.job)
         else:self.error.setText('Prepare or open a photo job first.')
+    @recoverable_record
     def from_saved(self):
         jobs=self.manager.w.db.jobs()
         if not jobs:self.error.setText('No saved jobs yet.');return
         from PySide6.QtWidgets import QInputDialog
         labels=[f'{i+1}. {name} · {updated}' for i,(_,name,updated) in enumerate(jobs)]
         value,ok=QInputDialog.getItem(self,'Saved composition','Choose a job',labels,0,False)
-        if ok:self.create(self.manager.w.db.load_job(jobs[labels.index(value)][0]))
+        if ok:self.create(checked_document(self.manager.w.db.load_job(jobs[labels.index(value)][0])))
+    @recoverable_record
     def reprint(self):
         if not self.current_id:return
         try:new=self.store.duplicate(self.current_id);self.select_order(new['id'])
@@ -105,7 +114,7 @@ class OrdersPage(QWidget):
         except ValueError as e:self.error.setText(str(e))
     def export(self):
         if not self.current_id:return
-        order=self.store.get(self.current_id);folder=self.manager.w.db.get('output',str(Path.home()/'Documents'))
+        order=self.store.get(self.current_id);folder=dialog_folder(self.manager.w.db,'output',self.manager.w.notify)
         path,_=QFileDialog.getSaveFileName(self,'Generate order PDF',str(Path(folder)/f'O{order["serial"]:06d}.pdf'),'PDF (*.pdf)')
         if not path:return
         try:event,job=self.store.begin_export(self.current_id,path)

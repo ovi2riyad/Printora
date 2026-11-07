@@ -1,8 +1,9 @@
-"""Exact millimetre layouts; no implicit photo rotation or size changes."""
+"""Exact millimetre layouts with explicit, backward-compatible sheet rotations."""
 import copy
 import math
 from collections import defaultdict
 from app.models.domain import Placement
+from app.services.print_geometry import footprint
 
 
 def mm_to_pt(mm):
@@ -10,6 +11,10 @@ def mm_to_pt(mm):
 
 
 def page_size(settings):
+    if settings.get('policy')=='document':
+        size=settings.get('document_paper_mm',[210.,297.])
+        if not isinstance(size,(list,tuple)) or len(size)!=2 or any(type(v) not in (int,float) or not math.isfinite(v) or not 50<=v<=1000 for v in size):raise ValueError('Invalid document paper dimensions')
+        return tuple(reversed(size)) if settings.get('landscape') else tuple(size)
     return (297., 210.) if settings.get('landscape') else (210., 297.)
 
 
@@ -25,8 +30,9 @@ def geometry(settings):
 def layout_capacity(photo, settings):
     pw, ph, m, gx, gy = geometry(settings)
     photo.validate()
-    columns = math.floor((pw - 2*m + gx + 1e-8) / (photo.width + gx))
-    rows = math.floor((ph - 2*m + gy + 1e-8) / (photo.height + gy))
+    width,height,_=footprint(photo,settings)
+    columns = math.floor((pw - 2*m + gx + 1e-8) / (width + gx))
+    rows = math.floor((ph - 2*m + gy + 1e-8) / (height + gy))
     if not columns or not rows:
         raise ValueError(f'{photo.width:g} × {photo.height:g} mm does not fit A4 with {m:g} mm margins. Try landscape paper, smaller margins, or an explicitly smaller photo size.')
     mode = settings.get('layout', 'auto')
@@ -47,16 +53,17 @@ def auto_layout(photos, settings):
     if settings.get('layout', 'auto') != 'auto':
         result, page = [], 0
         for photo in photos:
+            width,height,angle=footprint(photo,settings)
             columns, rows = layout_capacity(photo, settings)
             count = columns * rows
-            block_w = columns*photo.width + (columns-1)*gx
-            block_h = rows*photo.height + (rows-1)*gy
+            block_w = columns*width + (columns-1)*gx
+            block_h = rows*height + (rows-1)*gy
             x0, y0 = (pw-block_w)/2, (ph-block_h)/2
             for number in range(photo.quantity):
                 slot = number % count
                 result.append(Placement(photo.id, number, page+number//count,
-                                        x0+(slot % columns)*(photo.width+gx),
-                                        y0+(slot//columns)*(photo.height+gy), photo.width, photo.height))
+                                        x0+(slot % columns)*(width+gx),
+                                        y0+(slot//columns)*(height+gy),width,height,angle))
             page += math.ceil(photo.quantity/count)
         return result
     result, row = [], []
@@ -70,17 +77,19 @@ def auto_layout(photos, settings):
             y = m
         x = (pw-used)/2
         for photo, number in row:
-            result.append(Placement(photo.id, number, page, x, y, photo.width, photo.height))
-            x += photo.width+gx
+            width,height,angle=footprint(photo,settings)
+            result.append(Placement(photo.id, number, page, x, y,width,height,angle))
+            x += width+gx
         y += rh+gy
         row, used, rh = [], 0., 0.
 
     for photo in photos:
         layout_capacity(photo, settings)
+        width,height,_=footprint(photo,settings)
         for number in range(photo.quantity):
-            if row and used+gx+photo.width > pw-2*m+1e-8:flush()
-            used += (gx if row else 0)+photo.width
-            rh = max(rh, photo.height)
+            if row and used+gx+width > pw-2*m+1e-8:flush()
+            used += (gx if row else 0)+width
+            rh = max(rh, height)
             row.append((photo, number))
     flush()
     return result
@@ -132,7 +141,8 @@ def validate_layout(job):
             raise ValueError('Layout contains an invalid copy. Reset automatic layout.')
         if (r.photo_id, r.copy) in seen:raise ValueError('Layout contains duplicate copies.')
         seen.add((r.photo_id, r.copy))
-        if abs(r.width-p.width)>1e-7 or abs(r.height-p.height)>1e-7:
+        width,height,angle=footprint(p,job.print_settings)
+        if type(r.rotation) is not int or r.rotation!=angle or abs(r.width-width)>1e-7 or abs(r.height-height)>1e-7:
             raise ValueError('Photo size changed. Reset automatic layout.')
         if (r.page < 0 or r.page >= job.page_count or not all(math.isfinite(v) for v in (r.x,r.y,r.width,r.height))
                 or r.x < margin-1e-7 or r.y < margin-1e-7

@@ -1,9 +1,14 @@
 import json
 import os
 import sqlite3
+import copy
+import hashlib
+import logging
+import uuid
 from pathlib import Path
 from app.models.domain import Job
 from app.services.profiles import normalize_profile
+from app.services.optional_preferences import OPTIONAL_DEFAULTS,validate_optional
 
 def data_root():
     p = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'StudioPhotoMaker'
@@ -13,7 +18,7 @@ def data_root():
     return p
 
 def starter_profiles():
-    rows = [('Studio Portrait',45,55,''),('Studio Standard Photo',35,45,''),('Studio Joint Photo',55,45,''),('USA Passport',51,51,'USA'),('UK Passport',35,45,'UK'),('India Common Paper Photo',35,45,'India'),('India Consular Photo',51,51,'India'),('Malaysia ESD Visa',35,50,'Malaysia')]
+    rows = [('Studio Portrait',45,55,''),('Studio Portrait 42 x 52 mm',42,52,''),('Studio Standard Photo',35,45,''),('Studio Joint Photo',55,45,''),('USA Passport',51,51,'USA'),('UK Passport',35,45,'UK'),('India Common Paper Photo',35,45,'India'),('India Consular Photo',51,51,'India'),('Malaysia ESD Visa',35,50,'Malaysia')]
     sources = {'USA':'https://travel.state.gov/content/travel/en/passports/how-apply/photos.html','UK':'https://www.gov.uk/photos-for-passports/photo-requirements','India':'https://www.passportindia.gov.in/','Malaysia':'https://esd.imi.gov.my/portal/'}
     rows.append(('Bangladesh Studio Portrait',45,55,'Bangladesh'))
     return [normalize_profile(dict(name=n,width=w,height=h,country=c,document_type=n,background='#ADD8E6' if not c else '#FFFFFF',border=True,border_color='#808080',border_mm=0.2,notes='Editable studio print-size starting point. Check current authority rules; digital modification may be prohibited. Joint profiles are studio compositions, not document presets.',url=sources.get(c,''),verification='Requires verification' if c else 'Studio preset')) for n,w,h,c in rows]
@@ -22,6 +27,8 @@ class Database:
     def __init__(self, path=None):
         self.path = Path(path) if path else data_root() / 'studio.db'
         self.conn = sqlite3.connect(self.path)
+        self.preference_diagnostics=[]
+        self._preference_reports=set()
         if self.conn.execute("SELECT 1 FROM sqlite_master WHERE name='schema_migrations'").fetchone():
             if (self.conn.execute('SELECT max(version) FROM schema_migrations').fetchone()[0] or 0)>4:
                 self.conn.close();raise ValueError('This data was created by a newer Studio Photo Maker. Open it with the matching newer version.')
@@ -36,10 +43,35 @@ class Database:
             for p in starter_profiles():
                 if p['name'] not in existing:self.save_profile(p)
             self.set('profile_schema_version', 2)
+        # Requested default for NEW portraits only. Never rewrite jobs, previous
+        # recipes, or later preference choices when the application reopens.
+        if self.get('profile_schema_version', 0) < 3:
+            base='Studio Portrait 42 x 52 mm';name=base;existing={p['name']:p for p in self.profiles()};suffix=2
+            while name in existing and (existing[name].get('width'),existing[name].get('height'))!=(42,52):
+                name=f'{base} ({suffix})';suffix+=1
+            profile=next(p for p in starter_profiles() if p['name']==base)
+            profile=normalize_profile(dict(profile,name=name,recipe_id=uuid.uuid5(uuid.NAMESPACE_URL,'studio-recipe:'+name).hex))
+            with self.conn:
+                if name not in existing:self.conn.execute('INSERT INTO profiles VALUES(?,?)',(name,json.dumps(profile)))
+                for key,value in dict(default_profile=name,portrait_width=42.,portrait_height=52.,profile_schema_version=3).items():
+                    self.conn.execute('INSERT OR REPLACE INTO config VALUES(?,?)',(key,json.dumps(value)))
 
     def get(self, key, default=None):
         row = self.conn.execute('SELECT value FROM config WHERE key=?',(key,)).fetchone()
-        return json.loads(row[0]) if row else default
+        if not row:return default
+        if key not in OPTIONAL_DEFAULTS:return json.loads(row[0])
+        try:
+            value,reason=validate_optional(key,json.loads(row[0]))
+        except (ValueError,TypeError,OverflowError,RecursionError) as error:
+            value=copy.deepcopy(default if default is not None else OPTIONAL_DEFAULTS[key])
+            reason=str(error) if not isinstance(error,json.JSONDecodeError) else 'invalid JSON'
+        if reason:
+            fingerprint=(key,hashlib.sha256(str(row[0]).encode('utf-8')).hexdigest())
+            if fingerprint not in self._preference_reports:
+                self._preference_reports.add(fingerprint)
+                self.preference_diagnostics.append(dict(key=key,reason=reason,database=str(self.path)))
+                logging.getLogger(__name__).warning('Optional preference %s recovered (%s). Original value retained in config in %s.',key,reason,self.path)
+        return value
 
     def set(self,key,value):
         with self.conn: self.conn.execute('INSERT OR REPLACE INTO config VALUES(?,?)',(key,json.dumps(value)))

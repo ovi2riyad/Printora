@@ -41,6 +41,8 @@ class EditorCanvas(QGraphicsView):
 
 class PrintItem(QGraphicsPixmapItem):
     def __init__(self,im,placement,pw,ph,on_move,margin=0,photo=None):
+        from app.services.print_geometry import rotated_image
+        im=rotated_image(im,placement.rotation)
         super().__init__(pixmap(im));self.r=placement;self.pw=pw;self.ph=ph;self.on_move=on_move;self.margin=margin
         self.setTransformationMode(Qt.SmoothTransformation);self.setTransform(QTransform.fromScale(placement.width*3/self.pixmap().width(),placement.height*3/self.pixmap().height()));self.setPos(placement.x*3,placement.y*3)
         self.setFlags(QGraphicsItem.ItemIsMovable|QGraphicsItem.ItemIsSelectable)
@@ -60,7 +62,7 @@ class PrintItem(QGraphicsPixmapItem):
 class PrintCanvas(QGraphicsView):
     changed=Signal()
     def __init__(self):
-        super().__init__();self.setScene(QGraphicsScene(self));self.setRenderHint(QPainter.Antialiasing);self.setMinimumSize(400,450)
+        super().__init__();self.setScene(QGraphicsScene(self));self.setRenderHint(QPainter.Antialiasing);self.setMinimumSize(300,260)
     def display(self,job,page,images,vector_borders=False):
         self.scene().clear();pw,ph=page_size(job.print_settings)
         self.scene().addRect(0,0,pw*3,ph*3,QPen(QColor('#cccccc')),QColor('white'))

@@ -3,7 +3,7 @@
   #error Payload must point to the complete validated onedir application.
 #endif
 #ifndef ProductVersion
-  #define ProductVersion "3.1.0"
+  #define ProductVersion "3.3.2"
 #endif
 #ifndef ReleaseOutput
   #define ReleaseOutput "..\dist\installers"
@@ -11,8 +11,8 @@
 
 [Setup]
 AppVersion={#ProductVersion}
-AppPublisher=Printora
-AppPublisherURL=https://github.com/ovi2riyad/Printora
+AppPublisher=Riyad Ahmed Ovi
+AppPublisherURL=https://enthugo.vom
 AppSupportURL=https://github.com/ovi2riyad/Printora/issues
 DefaultGroupName=Printora
 DisableProgramGroupPage=yes
@@ -37,7 +37,7 @@ OutputBaseFilename=Printora-{#ProductVersion}-InstallerTest
 #else
 AppId={{4F077504-7244-4BEB-B290-FE8758932B47}
 AppName=Printora
-DefaultDirName={commonpf64}\Printora
+DefaultDirName=C:\Printora
 PrivilegesRequired=admin
 OutputBaseFilename=Printora-{#ProductVersion}-Setup
 #endif

@@ -18,7 +18,7 @@ def test_guided_portrait_and_joint(tmp_path,monkeypatch):
     monkeypatch.setenv('LOCALAPPDATA',str(tmp_path));app=QApplication.instance() or QApplication([]);w=StudioWindow();w.show();errors=[]
     monkeypatch.setattr(QMessageBox,'warning',lambda parent,title,message:errors.append(message))
     monkeypatch.setattr(QMessageBox,'question',lambda *a,**k:QMessageBox.Discard)
-    w.start_workflow('portrait');assert (w.width.value(),w.height.value())==(45,55);assert w.photo.background=='#ADD8E6';assert w.canvas.guide_count==1
+    w.start_workflow('portrait');assert (w.width.value(),w.height.value())==(42,52);assert w.photo.background=='#ADD8E6';assert w.canvas.guide_count==1
     source=tmp_path/'person.png';Image.new('RGB',(600,800),'orange').save(source)
     w.import_photos(paths=[str(source)]);wait(app,w);assert len(w.photo.layers)==1;assert 'no face' in w.crop_hint.text()
     # Exercise the processing button and resulting color preview through the real worker.
@@ -28,8 +28,8 @@ def test_guided_portrait_and_joint(tmp_path,monkeypatch):
     monkeypatch.setattr(module,'find_background_model',lambda path:tmp_path/'fake.onnx')
     monkeypatch.setattr(module,'remove_background',lambda *a,**k:str(mask))
     w.remove_backgrounds();wait(app,w);assert w.photo.layers[0].mask==str(mask);assert 'Background removed' in w.background_status.text();assert not w.before.isChecked()
-    w.quantity.setValue(8);wait(app,w);w.show_print();wait(app,w);assert len(w.job.placements)==8;assert w.job.placements[1].x-w.job.placements[0].x==45.2
-    assert w.job.placements[4].y-w.job.placements[0].y==55.2
+    w.quantity.setValue(8);wait(app,w);w.show_print();wait(app,w);assert len(w.job.placements)==8;assert w.job.placements[1].x-w.job.placements[0].x==42.2
+    assert w.job.placements[4].y-w.job.placements[0].y==52.2
     w.stack.setCurrentIndex(1);w.paper.setCurrentIndex(1);assert '6 photos' in w.capacity.text()
     w.dirty=False;w.start_workflow('joint');assert (w.photo.width,w.photo.height)==(55,45);assert w.canvas.guide_count==2
     w.import_photos(paths=[str(source),str(source)]);wait(app,w);assert len(w.photo.layers)==2

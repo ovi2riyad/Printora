@@ -1,3 +1,4 @@
+from app.services.user_folders import dialog_folder,dialog_output
 import json
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLineEdit,QListWidget,QPushButton,QDialog,QDialogButtonBox,QFormLayout,QDoubleSpinBox,QComboBox,QMessageBox,QFileDialog,QCheckBox,QSpinBox,QLabel,QColorDialog,QScrollArea
@@ -102,7 +103,7 @@ class Profiles(QWidget):
             self.hint.setText(p['name']+' is the default for '+p['kind'].lower()+' photos.');self.changed()
     def restore(self):self.db.restore_profiles();self.refresh();self.changed();self.hint.setText('Missing starters restored; customized profiles kept.')
     def import_json(self):
-        path,_=QFileDialog.getOpenFileName(self,'Import profiles','','JSON (*.json)')
+        path,_=QFileDialog.getOpenFileName(self,'Import profiles',dialog_folder(self.db,'input'),'JSON (*.json)')
         if path:
             try:
                 with open(path,encoding='utf-8') as f:rows=json.load(f)
@@ -112,15 +113,25 @@ class Profiles(QWidget):
                     if not p.get('name') or not 0<float(p['width'])<=1000 or not 0<float(p['height'])<=1000:raise ValueError('Invalid profile dimensions or name.')
                 rows=[normalize_profile(p) for p in rows]
                 existing={normalize_profile(p,validate=False)['recipe_id']:p['name'] for p in self.db.profiles()}
-                seen=set()
+                names={p['name']:normalize_profile(p,validate=False)['recipe_id'] for p in self.db.profiles()};seen=set();seen_names=set()
+                payloads={p['name']:normalize_profile(p,validate=False) for p in self.db.profiles()}
                 for p in rows:
+                    if p['name'] in seen_names or (p['name'] in names and names[p['name']]!=p['recipe_id']):raise ValueError('A recipe name already has another identity. Rename or duplicate explicitly before importing.')
+                    if p['name'] in payloads and p!=payloads[p['name']]:raise ValueError('Import would replace an existing recipe. Edit it explicitly in the recipe manager, or import a new name and UUID.')
                     if p['recipe_id'] in seen or (p['recipe_id'] in existing and existing[p['recipe_id']]!=p['name']):raise ValueError('Recipe ID is already used by another name. Rename it in the manager, or duplicate it to create a new identity.')
                     seen.add(p['recipe_id'])
+                    seen_names.add(p['name'])
                 with self.db.conn:
                     for p in rows:self.db.conn.execute('INSERT OR REPLACE INTO profiles VALUES(?,?)',(p['name'],json.dumps(p)))
                 self.refresh();self.changed()
             except Exception as e:QMessageBox.warning(self,'Import failed',str(e))
     def export_json(self):
-        path,_=QFileDialog.getSaveFileName(self,'Export profiles','profiles.json','JSON (*.json)')
+        from app.services.user_folders import folder
+        try:initial=str(folder(self.db,'output',create=False)/'profiles.json')
+        except ValueError as error:QMessageBox.warning(self,'Working folder',str(error));return
+        path,_=QFileDialog.getSaveFileName(self,'Export profiles',initial,'JSON (*.json)')
         if path:
-            with open(path,'w',encoding='utf-8') as f:json.dump(self.db.profiles(),f,indent=2)
+            try:
+                from app.services.recipe_export import export_recipes
+                export_recipes(self.db,path)
+            except Exception as error:QMessageBox.warning(self,'Export failed',str(error))

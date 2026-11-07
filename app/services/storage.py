@@ -25,7 +25,12 @@ def persistent_documents(conn):
     for table,key,field in JSON_COLUMNS:
         if table in tables:
             for id,raw in conn.execute(f'SELECT {key},{field} FROM {table}'):
-                yield table,key,field,id,json.loads(raw)
+                try:payload=json.loads(raw)
+                except ValueError:
+                    from app.services.optional_preferences import OPTIONAL_DEFAULTS
+                    if table=='config' and id in OPTIONAL_DEFAULTS:continue
+                    raise ValueError(f'Cannot safely inspect malformed {table} record {id}. The record was retained.')
+                yield table,key,field,id,payload
 
 
 def layer_assets(value):
@@ -66,6 +71,7 @@ def backup_data(root, destination, include_models=False):
     if destination.is_relative_to(root):
         raise ValueError('Save the backup outside the application-data folder.')
     if not (root/'studio.db').is_file():raise ValueError('The application database is missing.')
+    required_library=library_assets(root)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='studio-backup-') as temporary:
         snapshot = Path(temporary)
@@ -74,6 +80,9 @@ def backup_data(root, destination, include_models=False):
             if path.is_symlink():raise ValueError('Backups do not follow symbolic links: '+str(path))
             if not path.is_file() or path.name.endswith(('-wal','-shm','.tmp','.download')):continue
             relative = path.relative_to(root)
+            if relative.parts[0]=='document-sessions' and len(relative.parts)>2:
+                marker=root/relative.parts[0]/relative.parts[1]/'session.json'
+                if not marker.is_file() or not json.loads(marker.read_text(encoding='utf-8')).get('keep'):continue
             if not include_models and relative.parts[0]=='models':continue
             if path.suffix=='.db':
                 saved = snapshot/relative
@@ -85,12 +94,13 @@ def backup_data(root, destination, include_models=False):
                 files[relative.as_posix()] = saved
             else:files[relative.as_posix()] = path
         # Older jobs can reference files outside app data; include these too.
-        assets=referenced_assets(root)
+        assets=referenced_assets(snapshot)|library_assets(snapshot)|required_library
         with closing(_readonly(root/'studio.db')) as conn:
             if conn.execute("SELECT 1 FROM sqlite_master WHERE name='print_events'").fetchone():
                 assets.update(Path(r[0]).resolve() for r in conn.execute("SELECT path FROM print_events WHERE status<>'Failed'") if Path(r[0]).is_file())
         for asset in assets:
             if not asset.is_file():raise ValueError('A saved job references a missing image: '+str(asset))
+            if asset.is_relative_to(root) and asset.relative_to(root).as_posix() not in files:files[asset.relative_to(root).as_posix()]=asset
             if not asset.is_relative_to(root):
                 if not asset.is_file():raise ValueError('A saved job references a missing external image: '+str(asset))
                 name = 'restored_external/'+hashlib.sha256(str(asset).encode()).hexdigest()[:24]+'/'+asset.name
@@ -103,14 +113,30 @@ def backup_data(root, destination, include_models=False):
             with zipfile.ZipFile(temporary_zip, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=3) as archive:
                 for name, path in sorted(files.items()):
                     digest = hashlib.sha256()
+                    before=path.stat()
                     with path.open('rb') as stream, archive.open(name, 'w', force_zip64=True) as output:
                         while block := stream.read(1024*1024):digest.update(block);output.write(block)
-                    manifest['files'][name] = dict(sha256=digest.hexdigest(), bytes=path.stat().st_size)
+                    after=path.stat()
+                    if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns):raise ValueError('An asset changed while backing up. Retry with all editing applications closed.')
+                    manifest['files'][name] = dict(sha256=digest.hexdigest(), bytes=after.st_size)
                 archive.writestr('backup-manifest.json', json.dumps(manifest, indent=2))
             os.replace(temporary_zip, destination)
         finally:
             if Path(temporary_zip).exists():Path(temporary_zip).unlink()
     return str(destination)
+
+
+def library_assets(root):
+    """All source/prepared originals, including removed records; thumbnails are optional."""
+    path=Path(root)/'library/library.db';assets=set()
+    if path.exists():
+        with closing(_readonly(path)) as conn:
+            for table,field in [('photos','asset'),('photos','source'),('sources','asset')]:
+                for (value,) in conn.execute(f'SELECT {field} FROM {table}'):
+                    if value:assets.add(Path(value).resolve())
+    for asset in assets:
+        if not asset.is_file():raise ValueError('Required library original is missing: '+str(asset))
+    return assets
 
 
 def _safe_name(name):
@@ -168,6 +194,17 @@ def prepare_restore(archive_path, destination):
         for relative in manifest.get('external', {}).values():_safe_name(relative)
         old = manifest['source_root']
         external = manifest.get('external', {})
+        # Check semantic completeness as well as ZIP checksums, including old ZIPs.
+        with closing(_readonly(stage/'studio.db')) as check:
+            references={asset for table,key,field,id,payload in persistent_documents(check) if table in ('jobs','order_items') for asset in layer_assets(payload)}
+        library_check=stage/'library/library.db'
+        if library_check.exists():
+            with closing(_readonly(library_check)) as check:
+                for table,field in [('photos','asset'),('photos','source'),('sources','asset')]:
+                    references.update(Path(v).resolve() for (v,) in check.execute(f'SELECT {field} FROM {table}') if v)
+        for asset in references:
+            remapped=Path(_remap(str(asset),old,stage,external))
+            if not remapped.is_relative_to(stage) or not remapped.is_file():raise ValueError('Backup is incomplete: required original missing: '+asset.name)
         # A backup can omit re-downloadable models; retain already-installed models.
         if not manifest.get('includes_models') and (destination/'models').is_dir():
             shutil.copytree(destination/'models',stage/'models',dirs_exist_ok=True)

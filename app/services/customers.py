@@ -94,7 +94,7 @@ class CustomerStore:
 
     def assign_sources(self,customer_id,paths,tray):
         """Persist intent before crops exist; repeating a source assignment is safe."""
-        if not customer_id:return
+        if not customer_id:self.reconcile(tray);return
         if not self.get(customer_id):raise ValueError('Customer no longer exists.')
         with tray.lock:
             digests=[r[0] for path in paths for r in tray.conn.execute('SELECT digest FROM sources WHERE asset=?',(path,))]
@@ -104,6 +104,27 @@ class CustomerStore:
     def reconcile(self,tray):
         """Recover interrupted post-crop association without changing the library."""
         if not tray.conn:return
+        # Idempotent repair journal bridges the worker-owned library and GUI-owned
+        # main store. A crash between commits leaves the journal for the next run.
+        with tray.lock:repairs=tray.conn.execute('SELECT old,new FROM source_repairs').fetchall()
+        if repairs:
+            import json
+            def remap(value):
+                if isinstance(value,dict):return {k:remap(v) for k,v in value.items()}
+                if isinstance(value,list):return [remap(v) for v in value]
+                if isinstance(value,str):
+                    return next((new for old,new in repairs if value.casefold()==old.casefold()),value)
+                return value
+            clean=True
+            with self.conn:
+                for table,field in [('jobs','payload'),('order_items','snapshot')]:
+                    if not self.conn.execute("SELECT 1 FROM sqlite_master WHERE name=?",(table,)).fetchone():continue
+                    for id,raw in self.conn.execute(f'SELECT id,{field} FROM {table}').fetchall():
+                        try:updated=json.dumps(remap(json.loads(raw)))
+                        except (ValueError,TypeError):clean=False;continue
+                        self.conn.execute(f'UPDATE {table} SET {field}=? WHERE id=?',(updated,id))
+            if clean:
+                with tray.lock,tray.conn:tray.conn.execute('DELETE FROM source_repairs')
         additions=[]
         with tray.lock:
             for customer_id,digest in self.conn.execute('SELECT customer_id,source_digest FROM customer_source_links'):

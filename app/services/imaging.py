@@ -3,6 +3,7 @@ from functools import lru_cache
 import hashlib
 import threading
 import sys
+import math
 from PIL import Image, ImageOps, ImageFilter,ImageEnhance,ImageDraw
 
 SUPPORTED={'.jpg','.jpeg','.png','.webp','.bmp','.tif','.tiff'}
@@ -103,17 +104,28 @@ def prepare_layer(layer,before=False,limit=6000):
             k=2*abs(layer.erosion)+1;alpha=alpha.filter(ImageFilter.MinFilter(k) if layer.erosion>0 else ImageFilter.MaxFilter(k))
         if layer.feather:alpha=alpha.filter(ImageFilter.GaussianBlur(layer.feather))
         original_alpha=None
+        baseline_alpha=alpha.copy()
         for stroke in layer.mask_strokes:
+            if stroke.get('kind')=='selection':
+                from app.services.selections import apply_selection
+                alpha=apply_selection(alpha,baseline_alpha,stroke);continue
             points=[(round(x*im.width),round(y*im.height)) for x,y in stroke['points']]
             if not points:continue
             radius=max(1,round(stroke['radius']*im.width));paint=Image.new('L',im.size);draw=ImageDraw.Draw(paint)
-            draw.line(points,fill=255,width=radius*2)
+            draw.line(points,fill=255,width=radius*2,joint='curve')
             for x,y in (points[0],points[-1]):draw.ellipse((x-radius,y-radius,x+radius,y+radius),fill=255)
             hardness=stroke.get('hardness')
             blur=max(.3,radius*.15) if hardness is None else max(.3,radius*(1-max(0,min(1,float(hardness))))*.6)
+            extra=float(stroke.get('feather',0))
+            if not math.isfinite(extra) or not 0<=extra<=1:raise ValueError('Invalid brush feather')
+            blur+=extra*im.width
             paint=paint.filter(ImageFilter.GaussianBlur(blur))
             opacity=max(0,min(1,float(stroke.get('opacity',1))))
             if opacity!=1:paint=paint.point(lambda v:round(v*opacity))
+            if stroke.get('clip_selection'):
+                from app.services.selections import selection_mask
+                from PIL import ImageChops
+                paint=ImageChops.multiply(paint,selection_mask(stroke['clip_selection'],im.size))
             if stroke['mode']=='restore':
                 if original_alpha is None:original_alpha=load_image(layer.source,limit).getchannel('A').resize(im.size)
                 alpha=Image.composite(original_alpha,alpha,paint)
@@ -183,10 +195,6 @@ def face_position(layer,width,height):
     return layer
 
 def resolution_warnings(photo):
-    warnings=[]
-    for l in photo.layers:
-        with Image.open(l.source) as im:
-            w,h=ImageOps.exif_transpose(im).size
-        effective=min(w/photo.width,h/photo.height)*25.4/max(l.scale,0.01)
-        if effective<300: warnings.append(f'{photo.name}: estimated {effective:.0f} DPI (300 recommended).')
-    return warnings
+    from app.services.hardware import direct_print_quality
+    from app.models.domain import Job
+    return direct_print_quality(Job(photos=[photo]))

@@ -1,4 +1,4 @@
-"""Build the portable application and a normal all-users Windows installer."""
+"""Build a complete application payload and its client-facing Setup EXE."""
 import argparse
 import os
 from pathlib import Path
@@ -25,8 +25,9 @@ def prepare_payload(payload):
     payload=Path(payload).resolve()
     required=[payload/'StudioPhotoMaker.exe',payload/'_internal/models/u2net_human_seg.onnx']
     if not all(p.is_file() for p in required):raise ValueError('The complete application and bundled portrait model are required before building Setup.')
-    for name in ('README.md','PROJECT_INFO.md','VALIDATION.md','TODO.md','THIRD_PARTY.md','GITHUB.md','PHASE_REPORTS_3_0.md'):
+    for name in ('README.md','CREDITS.md','THIRD_PARTY.md'):
         shutil.copy2(ROOT/name,payload/name)
+    shutil.copytree(ROOT/'docs',payload/'docs',dirs_exist_ok=True)
     make_icon(payload/'Printora.ico')
     return payload
 
@@ -47,10 +48,15 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument('--skip-app',action='store_true');parser.add_argument('--portable-only',action='store_true');parser.add_argument('--payload',default=str(ROOT/'dist/candidate/StudioPhotoMaker'));parser.add_argument('--test-root');parser.add_argument('--output');args=parser.parse_args()
     if not args.skip_app:
         icon=ROOT/'.tools/Printora.ico';icon.parent.mkdir(exist_ok=True);make_icon(icon)
-        subprocess.run([sys.executable,'-m','PyInstaller','--clean','--noconfirm','--distpath','dist/candidate','--workpath','build/candidate','StudioPhotoMaker.spec'],check=True,cwd=ROOT)
+        payload=Path(args.payload).resolve()
+        if payload.name!='StudioPhotoMaker':raise ValueError('The payload folder must end in StudioPhotoMaker (PyInstaller onedir name).')
+        subprocess.run([sys.executable,'-m','PyInstaller','--clean','--noconfirm','--distpath',str(payload.parent),'--workpath',str(ROOT/'build'/payload.parent.name),'StudioPhotoMaker.spec'],check=True,cwd=ROOT)
     payload=prepare_payload(args.payload)
-    if not args.portable_only:print('Installer ready:',compile_installer(payload,args.output,args.test_root))
-    print('Portable application:',payload)
+    if not args.portable_only:
+        installer=compile_installer(payload,args.output,args.test_root)
+        print('\nCLIENT INSTALLER:',installer,flush=True)
+        print('Double-click Setup to install Printora and its bundled dependencies. New installs default to C:\\Printora.',flush=True)
+    print('Developer portable folder (keep every file):',payload,flush=True)
 
 
 if __name__=='__main__':main()

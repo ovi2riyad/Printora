@@ -34,7 +34,7 @@ def main():
     root.mkdir(parents=True);app=root/'Application';started=time.monotonic();checks=[];result={};environment=dict(os.environ)
     environment['LOCALAPPDATA']=str(root/'UserData');environment['QT_QPA_PLATFORM']='offscreen';environment['QT_QPA_FONTDIR']='C:/Windows/Fonts';environment.pop('STUDIO_VERIFY_MODEL_DIR',None)
     try:
-        installer=compile_installer(args.payload,ROOT/'dist/installer-tests',root)
+        installer=compile_installer(args.payload,root/'compiler-output',root)
         flags=['/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-']
         run([installer,*flags,f'/LOG={root / "install.log"}']);assert (app/'Printora.exe').is_file() and (app/'_internal/models/u2net_human_seg.onnx').is_file()
         entry=registration(app);assert entry and entry['name'].startswith('Printora Installer Test'),repr(entry);checks.append('Installed files, bundled model and Windows Installed Apps entry')
@@ -43,9 +43,15 @@ def main():
         user=root/'UserData/StudioPhotoMaker';user.mkdir(parents=True,exist_ok=True);sentinel=user/'preserve-me.txt';sentinel.write_text('Existing customer data must survive upgrade and uninstall.');unknown=app/'customer-created.txt';unknown.write_text('Unknown file: never remove with wildcard uninstall.')
         run([installer,*flags,f'/LOG={root / "upgrade.log"}']);assert sentinel.is_file() and unknown.is_file() and registration(app)['key']==entry['key'];checks.append('Upgrade reuses app registration and preserves user/unknown files')
         run([app/'Printora.exe','--smoke-test',root/'installed-dashboard.png'],environment);assert (root/'installed-dashboard.png').is_file();checks.append('Renamed installed EXE launches without Python')
-        run([app/'Printora.exe','--verify-studio',ROOT/'Demo',root/'workflow'],environment,timeout=300)
-        workflow=json.loads((root/'workflow/result.json').read_text());assert workflow['passed'] and workflow['total_saved']==68
-        checks.append(f'Installed bundled-only full acceptance: {len(workflow["checks"])} checks, 68 photos')
+        # Keep acceptance reproducible after private studio demos are removed.
+        # The diagnostic intercepts every driver request; it never scans/prints.
+        workflow_environment=dict(environment,LOCALAPPDATA=str(root/'WorkflowData'),PRINTORA_SIMPLE_VERIFY='1')
+        workflow_environment.pop('PRINTORA_NID_VERIFY_DEMO',None)
+        run([app/'Printora.exe','--verify-simple-workflows',root/'workflow'],workflow_environment,timeout=180)
+        workflow=json.loads((root/'workflow/result.json').read_text())
+        assert workflow['ok'] and len(workflow['checks'])>=31 and not workflow['errors']
+        assert workflow['physical_scanning'] is False and workflow['physical_printing'] is False
+        checks.append(f'Installed self-contained workflow: {len(workflow["checks"])} checks; no physical device use')
         result=dict(passed=True,checks=checks,workflow_seconds=workflow['seconds'],registration=entry)
     except Exception as e:
         import traceback

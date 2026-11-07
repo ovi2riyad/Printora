@@ -5,11 +5,12 @@ from PIL import ImageColor
 from app.models.domain import Photo
 from app.services.layout import geometry
 from app.services.profiles import LAYOUTS
+from app.services.user_folders import defaults as folder_defaults
 
 
 def default_preferences():
-    return dict(default_workflow='dashboard',default_profile='Studio Portrait',joint_profile='Studio Joint Photo',
-                output=str(Path.home()/'Documents'),portrait_width=45.,portrait_height=55.,
+    return dict(default_workflow='dashboard',default_profile='Studio Portrait 42 x 52 mm',joint_profile='Studio Joint Photo',
+                **folder_defaults(),portrait_width=42.,portrait_height=52.,
                 joint_width=55.,joint_height=45.,background='#ADD8E6',quantity=4,border=True,
                 border_color='#808080',border_mm=.2,landscape=False,margin=10.,gap_x=.2,gap_y=.2,
                 layout='auto',rows=2,columns=2,dpi=300,processing_quality='balanced',
@@ -17,6 +18,12 @@ def default_preferences():
 
 
 def validate_preferences(values):
+    from app.services.user_folders import KINDS
+    for kind in KINDS:
+        key='output' if kind=='output' else kind+'_folder'
+        if key in values:
+            value=values[key]
+            if not isinstance(value,str) or not value.strip() or '\x00' in value or not Path(value).expanduser().is_absolute():raise ValueError('Choose an absolute '+kind+' folder.')
     if values['default_workflow'] not in ('dashboard','cropper','portrait','joint'):raise ValueError('Choose a supported startup workflow.')
     for key in ('background','border_color'):ImageColor.getrgb(values[key])
     for mode in ('portrait','joint'):

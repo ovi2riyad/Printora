@@ -44,8 +44,10 @@ class Photo:
     layers: list = field(default_factory=list)
     composition: dict = field(default_factory=dict)
     provenance: dict = field(default_factory=dict)
+    print_rotation: str = 'auto'
 
     def validate(self):
+        if self.print_rotation not in ('auto','none','cw','ccw','half'):raise ValueError('Unsupported photo print rotation')
         if not all(math.isfinite(v) and v > 0 for v in (self.width, self.height)):
             raise ValueError('Photo dimensions must be positive finite millimetres.')
         if not 1 <= self.quantity <= 10000:
@@ -73,6 +75,7 @@ class Placement:
     y: float
     width: float
     height: float
+    rotation: int = 0
 
 @dataclass
 class Job:

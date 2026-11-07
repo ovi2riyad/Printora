@@ -25,7 +25,13 @@ def export_pdf(job,path,current_page=None,dpi=300):
                 images.move_to_end(p.id)
                 while len(images)>4:images.popitem(last=False)
                 x,y,w,h=pt(r.x),pt(ph-r.y-r.height),pt(r.width),pt(r.height)
-                c.drawImage(images[p.id],x,y,w,h)
+                if not r.rotation:c.drawImage(images[p.id],x,y,w,h)
+                else:
+                    c.saveState()
+                    if r.rotation==90:c.translate(x,y+h);c.rotate(-90)
+                    elif r.rotation==270:c.translate(x+w,y);c.rotate(90)
+                    else:c.translate(x+w,y+h);c.rotate(180)
+                    c.drawImage(images[p.id],0,0,pt(p.width),pt(p.height));c.restoreState()
                 if p.border and p.border_mm:
                     b=pt(p.border_mm); c.setStrokeColor(HexColor(p.border_color)); c.setLineWidth(b); c.rect(x+b/2,y+b/2,w-b,h-b,stroke=1,fill=0)
                 if job.print_settings.get('guides'):

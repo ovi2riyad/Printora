@@ -1,7 +1,8 @@
 """Optional offline studio utilities, using the existing library and worker queue."""
+from app.services.user_folders import dialog_folder,dialog_output
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QTabWidget,QLabel,
-    QPushButton,QComboBox,QCheckBox,QLineEdit,QDoubleSpinBox,QListWidget,QFileDialog)
+    QPushButton,QComboBox,QCheckBox,QLineEdit,QDoubleSpinBox,QListWidget,QFileDialog,QScrollArea,QLayout)
 from app.ui.photo_library import PhotoLibrary
 from app.ui.canvas import pixmap
 from app.services import studio_tools as service
@@ -28,7 +29,8 @@ class StudioTools(QWidget):
         review=QHBoxLayout();self.result_list=QListWidget();self.result_list.setMaximumHeight(160);self.result_list.currentRowChanged.connect(self.preview_result);review.addWidget(self.result_list,1)
         self.preview=QLabel();self.preview.setFixedSize(150,160);self.preview.setAlignment(Qt.AlignCenter);review.addWidget(self.preview);layout.addLayout(review)
         row=QHBoxLayout();self.button(row,'Mark selected result reviewed',self.review);self.button(row,'Save reviewed results',self.save_reviewed);self.button(row,'Open saved result in maker',self.edit_result);self.button(row,'Add reviewed results to print session',self.send_session);layout.addLayout(row)
-        self.tabs.addTab(photos,'Batch & contact sheets')
+        layout.setSizeConstraint(QLayout.SetMinimumSize)
+        scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setWidget(photos);scroll.setMinimumWidth(0);self.tabs.addTab(scroll,'Batch & contact sheets')
         orders=QWidget();layout=QVBoxLayout(orders);self.orders=QComboBox();layout.addWidget(self.orders)
         row=QHBoxLayout();self.button(row,'Save order QR image',self.save_qr);self.button(row,'Read QR image',self.read_qr);layout.addLayout(row)
         self.code=QLineEdit();self.code.setPlaceholderText('Scan or paste printora:order:…');self.code.returnPressed.connect(self.lookup);layout.addWidget(self.code);self.button(layout,'Find order from code',self.lookup)
@@ -58,7 +60,7 @@ class StudioTools(QWidget):
             value=normalize_profile(p,validate=False);self.recipe.addItem(value['name'],value)
         self.refresh_statistics()
     def target(self,label,extension):
-        path,_=QFileDialog.getSaveFileName(self,label,'',f'{extension.upper()} files (*.{extension})')
+        path,_=QFileDialog.getSaveFileName(self,label,dialog_output(self.w.db,'studio-export.'+extension,self.w.notify),f'{extension.upper()} files (*.{extension})')
         if not path:return None
         if not path.lower().endswith('.'+extension):path+='.'+extension
         try:
@@ -123,7 +125,7 @@ class StudioTools(QWidget):
     def open_order(self,id):
         self.manager.orders.get(id);self.manager.order_page.select_order(id);self.manager.show(self.manager.order_page)
     def read_qr(self):
-        path,_=QFileDialog.getOpenFileName(self,'Read order QR','','Images (*.png *.jpg *.jpeg *.bmp *.webp)')
+        path,_=QFileDialog.getOpenFileName(self,'Read order QR',dialog_folder(self.w.db,'input',self.w.notify),'Images (*.png *.jpg *.jpeg *.bmp *.webp)')
         if path:
             def done(id):
                 try:self.open_order(id)

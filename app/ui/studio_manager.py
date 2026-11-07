@@ -3,11 +3,12 @@ import copy
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,
-    QComboBox,QInputDialog,QMessageBox,QDialog,QListWidget,QLineEdit,QDialogButtonBox,QStyle,QFrame)
+    QComboBox,QInputDialog,QMessageBox,QDialog,QListWidget,QLineEdit,QDialogButtonBox,QStyle,QFrame,QScrollArea)
 from app.services.customers import CustomerStore
 from app.ui.customers import CustomersPage,CustomerDialog
 from app.ui.photo_library import PhotoLibrary
 from app.ui.canvas import pixmap
+from app.services.record_recovery import recoverable_record,checked_document
 
 
 class CustomerPicker(QDialog):
@@ -39,7 +40,9 @@ class LibraryPage(QWidget):
         outer.addLayout(row)
         unlink=QPushButton('Unlink selected photos from filtered customer');unlink.clicked.connect(self.unlink);outer.addWidget(unlink)
     def lookup(self,text):
-        if self.customer_id:return self.manager.customers.photo_ids(self.customer_id)
+        if self.customer_id:
+            ids=self.manager.customers.photo_ids(self.customer_id)
+            return ids & {p.id for p in self.manager.w.tray.query(text,limit=None)} if text else ids
         if text:
             matches=self.manager.customers.matching_photo_ids(text)
             if matches:return matches|{p.id for p in self.manager.w.tray.query(text)}
@@ -86,8 +89,7 @@ class StudioManager:
         self.multi=MultiPhotoPrint(self);w.stack.addWidget(self.multi)
         bar=QHBoxLayout();review=QPushButton('Add reviewed photo to session');review.clicked.connect(self.multi.accept_reviewed);bar.addWidget(review);w.stack.widget(1).layout().insertLayout(2,bar)
         from app.ui.editor_tools import EditorTools
-        w.editor_tools=EditorTools(w);w.stack.widget(1).layout().insertWidget(3,w.editor_tools);w.editor_tools.hide()
-        more=QPushButton('More editing tools');more.setCheckable(True);more.toggled.connect(w.editor_tools.setVisible);bar.addWidget(more)
+        w.editor_tools=EditorTools(w);selection_scroll=QScrollArea();selection_scroll.setWidgetResizable(True);selection_scroll.setWidget(w.editor_tools);w.editor_tabs.addTab(selection_scroll,'Select / Mask')
         order=QPushButton('Create order');order.clicked.connect(lambda:self.order_page.create(w.job) if w.photo and w.photo.layers else w.notify('Prepare a composition first.'));bar.addWidget(order)
         self.customer_page=CustomersPage(self.customers);self.library=LibraryPage(self)
         self.customer_page.changed.connect(self.refresh);self.customer_page.open_photos.connect(self.customer_photos);self.customer_page.open_job.connect(self.open_job)
@@ -101,6 +103,8 @@ class StudioManager:
         w.cropper.on_crops_saved=lambda:self.customers.reconcile(w.tray)
         from app.ui.studio_tools import StudioTools
         self.tools=StudioTools(self);w.stack.addWidget(self.tools)
+        from app.ui.hardware import HardwareHub
+        w.hardware=HardwareHub(w)
         self.dashboard=self.make_dashboard();old=w.stack.widget(0);w.stack.removeWidget(old);w.stack.insertWidget(0,self.dashboard);old.deleteLater();w.stack.setCurrentIndex(0)
     def clear_import_customer(self):self.import_customer_id=None;self.import_customer.setText('Import customer: unassigned (optional)')
     def rebind(self):
@@ -115,6 +119,7 @@ class StudioManager:
         if d.exec():self.import_customer_id=d.selected_id;self.import_customer.setText('Import customer: '+self.customers.get(d.selected_id)['name']);self.refresh()
     def make_dashboard(self):
         page=QWidget();outer=QVBoxLayout(page);title=QLabel('Your studio workspace');title.setObjectName('title');outer.addWidget(title)
+        outer.addWidget(self.w.hardware.panel)
         outer.addWidget(QLabel('Prepare photographs, compose portraits and keep customer work together. Everything stays on this PC.'))
         grid=QGridLayout();grid.setSpacing(16);outer.addLayout(grid)
         modules=[('Cropper','Separate scans and camera photos',self.w.open_cropper),('Portrait Maker','One subject, exact-size prints',lambda:self.w.start_workflow('portrait')),('Joint Photo Maker','Combined or separate subjects',lambda:self.w.start_workflow('joint')),('Customers','Search name or mobile',lambda:self.show(self.customer_page)),('Photo Library','Browse and select numbered photos',lambda:self.show(self.library)),('Print Recipes','Regional profiles and print defaults',self.w.profiles_dialog),('Settings & Backup','Preferences, offline models and safe backup',self.w.settings_dialog)]
@@ -133,7 +138,7 @@ class StudioManager:
         outer.addLayout(recent_row)
         tools=QPushButton('Studio tools — batch, contact sheets, order QR, receipts, calibration and statistics');tools.clicked.connect(lambda:self.show(self.tools));outer.addWidget(tools);outer.addStretch(1)
         self.recent_customers.activated.connect(self.recent_customer);self.recent_orders.activated.connect(self.recent_order);self.recent_jobs.activated.connect(lambda index:self.open_job(self.recent_jobs.itemData(index)) if index else None);self.frequent_recipes.activated.connect(self.quick_recipe)
-        self.refresh();return page
+        self.refresh();scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setWidget(page);return scroll
     def refresh(self):
         customers=self.customers.search(limit=4);jobs=self.w.db.jobs()[:4]
         if hasattr(self,'recent_customers'):
@@ -144,6 +149,7 @@ class StudioManager:
                 box.blockSignals(True);box.clear();box.addItem(title,None)
                 for text,id in values:box.addItem(text,id)
                 box.blockSignals(False)
+        if hasattr(self.w,'shell'):self.w.shell.refresh_overview()
     def recent_customer(self,index):
         if index:self.customer_page.search.setText('C%06d'%self.customers.get(self.recent_customers.itemData(index))['serial']);self.show(self.customer_page)
     def recent_order(self,index):
@@ -170,9 +176,10 @@ class StudioManager:
         if page is self.multi:page.refresh()
     def customer_photos(self,id):self.library.customer_id=id;self.show(self.library)
     def customer_orders(self,id):self.order_page.customer_id=id;self.order_page.search.clear();self.show(self.order_page)
+    @recoverable_record
     def open_job(self,id):
         if not self.w.save_before_leave():return
-        job=self.w.db.load_job(id)
+        job=checked_document(self.w.db.load_job(id))
         row=self.w.db.conn.execute('SELECT id FROM print_sessions WHERE job_id=?',(job.id,)).fetchone()
         if row or len(job.photos)!=1:
             if row:self.multi.load_session(row[0])
@@ -180,4 +187,4 @@ class StudioManager:
                 import uuid
                 self.multi.job=copy.deepcopy(job);self.multi.job.id=uuid.uuid4().hex;self.multi.session_id=None;self.multi.persist()
             self.show(self.multi);return
-        self.w.job=job;self.w.photo=job.photos[0];self.w.mode='portrait' if self.w.photo.kind=='Individual' else 'joint';self.w.undo.clear();self.w.redo.clear();self.w.dirty=False;self.w.autosave.stop();self.w.sync_controls();self.w.stack.setCurrentIndex(1)
+        self.w.adopt_job(job);self.w.sync_controls();self.w.stack.setCurrentIndex(1)

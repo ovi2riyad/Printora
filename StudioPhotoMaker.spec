@@ -11,6 +11,9 @@ for package in ('onnxruntime',):
 datas+=collect_data_files('cv2')
 icon=Path('.tools/Printora.ico');icon.parent.mkdir(exist_ok=True);make_icon(icon)
 datas.append((str(icon),'assets'))
+datas.append(('assets/studio-hero.png','assets'))
+datas.append(('app/services/wia_bridge.ps1','app/services'))
+datas.append(('app/services/twain_bridge.ps1','app/services'))
 portrait_model=Path(os.environ.get('LOCALAPPDATA',''))/'StudioPhotoMaker'/'models'/'u2net_human_seg.onnx'
 if not portrait_model.is_file():raise SystemExit('Portrait model missing. Install it with python -m scripts.install_model before building the offline release.')
 datas.append((str(portrait_model),'models'))

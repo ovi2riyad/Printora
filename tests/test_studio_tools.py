@@ -84,6 +84,6 @@ def test_tools_ui_review_save_statistics_and_qr_lookup(tmp_path,monkeypatch):
 
 def test_installer_configuration_preserves_data_and_default_locations():
     root=Path(__file__).resolve().parents[1];script=(root/'installer/Printora.iss').read_text()
-    assert 'DefaultDirName={commonpf64}\\Printora' in script and 'PrivilegesRequired=admin' in script
+    assert 'DefaultDirName=C:\\Printora' in script and 'PrivilegesRequired=admin' in script
     assert '{commondesktop}\\Printora' in script and '{commonprograms}\\Printora\\Printora' in script
     assert '[UninstallDelete]' not in script and 'AppMutex=Local\\Printora.Desktop.Running' in script
