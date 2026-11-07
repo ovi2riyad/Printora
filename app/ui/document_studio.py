@@ -21,7 +21,7 @@ class DocumentStudio(QWidget):
         super().__init__();self.w=w;self.kind=kind;self.session=DocumentSession(data_root(),kind);self.dirty=False;self.loading=False;self.reviewed=set();self.current_size=None;self.scan_generation=0
         self.action_buttons={};self.simple_inflight=False;self.set_active=False;self.copy_batch=[];self.simple_pending=None;self.simple_mode=None;self.pending_nid_preview=False;self.preview_dialog=None
         self.pending_delivery=None;self.delivery_timer=QTimer(self);self.delivery_timer.setSingleShot(True);self.delivery_timer.timeout.connect(self.deliver_scan)
-        outer=QVBoxLayout(self);title=QLabel('BD NID Card Print' if kind=='nid' else 'Quick Copy');title.setObjectName('title');outer.addWidget(title)
+        outer=QVBoxLayout(self);title=QLabel('ID Card Print' if kind=='nid' else 'Quick Copy');title.setObjectName('title');outer.addWidget(title)
         desc=QLabel('Scan or import Front and Back → Preview PDF → adjust the corners → Print.' if kind=='nid' else 'Copy a page in color or black & white. Print Set scans several pages, then prints when you finish.');desc.setWordWrap(True);outer.addWidget(desc)
         actions=QHBoxLayout();outer.addLayout(actions)
         for text,fn in ([('Scan Front',lambda:self.scan('Front')),('Scan Back',lambda:self.scan('Back'))] if kind=='nid' else [('Copy / Scan page',lambda:self.scan('Page'))]):self.button(actions,text,fn)
@@ -73,7 +73,7 @@ class DocumentStudio(QWidget):
         self.button(form,'Rotate clockwise',self.rotate)
         self.button(form,'Replace current side / page',lambda:self.import_files(replace=True))
         from app.ui.workflow_settings import WorkflowSettings,move_rows
-        self.advanced_settings=WorkflowSettings(self,'Quick Copy' if kind=='copy' else 'NID Card Print')
+        self.advanced_settings=WorkflowSettings(self,'Quick Copy' if kind=='copy' else 'ID Card Print')
         self.advanced_settings.closed.connect(self.refresh_nid_preview)
         scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setWidget(settings);self.advanced_settings.add_widget(scroll)
         basic=QWidget();basic_form=QFormLayout(basic);basic_form.setRowWrapPolicy(QFormLayout.WrapAllRows)

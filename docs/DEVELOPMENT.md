@@ -66,7 +66,7 @@ Diagnostic CLI runs must use **fresh isolated child-process `LOCALAPPDATA`**, ne
 
 ## Build and verify
 
-Build with the normal installed portrait model available; do not point `LOCALAPPDATA` at an empty test folder while packaging. `build.bat` creates the complete payload, copies README/credits/notices/developer and validation guides, then compiles Setup. Frozen acceptance uses fresh data, different cwd, Python-free PATH and no external model override.
+Build with the normal installed portrait model available; do not point `LOCALAPPDATA` at an empty test folder while packaging. `build.bat` creates the complete payload, copies README/credits, the MIT license, component notices/licenses, creator artwork, and developer/validation guides, then compiles Setup. Frozen acceptance uses fresh data, different cwd, Python-free PATH and no external model override.
 
 ```powershell
 & '.\.venv\Scripts\python.exe' -m scripts.verify_installer --payload dist/candidate/StudioPhotoMaker --root .tools/FRESH_INSTALLER_CHECK
@@ -79,3 +79,9 @@ The verifier uses the same installer definition with an isolated test identity/d
 Keep source in Git and Setup/checksums in GitHub Releases. Never commit private demos, databases, logs, backups, models, generated `build/dist/output`, credentials or local tools. Review actual staged paths and the clean-checkout result. Run Windows CI after pushing and fix failures before marking a release ready. Do not force-push existing history.
 
 Update README for user behavior, this file for architecture, and VALIDATION for executed evidence/limits. Keep version, credits, installer publisher and shipped documentation consistent. Old audits and ad hoc scripts tied to removed demos have been retired; do not cite their local paths as current release evidence.
+
+## Ownership and licensing
+
+Printora source and project artwork use MIT, copyright 2026 Riyad Ahmed Ovi. Public attribution is centralized in `app/credits.py`; Settings → About uses `ui/about.py`, and GitHub uses `assets/creator-card.svg`. Keep website/email, installer publisher, README and CREDITS consistent. Runtime notices and package metadata are copied into the payload by `copy_dependency_notices()`; retain them and the dynamically linked Qt libraries. See `licenses/README.md` for component sources and replacement rights.
+
+The public workspace is **ID Card Print**. Retain legacy internal `nid` identifiers and stored kinds for backward compatibility; do not rename serialized session values solely to match the visible label.

@@ -2,17 +2,24 @@
 
 **Offline photography and document studio for Windows 10/11 x64.**
 
-Prepare scanned photos, make individual or joint portraits, copy documents, reproduce existing NID cards, and print correctly sized PDF sheets. Photos and customer records stay on the computer. Background removal runs locally using the bundled model.
+Prepare scanned photos, make individual or joint portraits, copy documents, reproduce existing ID cards, and print correctly sized PDF sheets. Photos and customer records stay on the computer. Background removal runs locally using the bundled model.
 
-Created by **Riyad Ahmed Ovi** · [enthugo.vom](https://enthugo.vom) · [ovi2riyad@gmail.com](mailto:ovi2riyad@gmail.com)
+[![Created by Riyad Ahmed Ovi](assets/creator-card.svg)](https://enthugo.com)
 
-**Made using ChatGPT Codex.** See [credits](CREDITS.md) and [third-party notices](THIRD_PARTY.md).
+<p align="center">
+  <a href="https://enthugo.com">Website</a> ·
+  <a href="mailto:ovi2riyad@gmail.com">Contact Riyad</a> ·
+  <a href="https://github.com/ovi2riyad/Printora/releases/latest">Download for Windows</a> ·
+  <a href="LICENSE">MIT License</a>
+</p>
+
+Created by **Riyad Ahmed Ovi** · **Made using ChatGPT Codex.** [Meet the creator](CREDITS.md).
 
 ## Install
 
 Download **Printora Setup** from [GitHub Releases](https://github.com/ovi2riyad/Printora/releases/latest). Clients do not need Python.
 
-1. Double-click `Printora-3.3.2-Setup.exe` and approve the Windows administrator prompt.
+1. Double-click `Printora-3.3.3-Setup.exe` and approve the Windows administrator prompt.
 2. A fresh installation defaults to **`C:\Printora`**. Setup creates Desktop/Start menu shortcuts and an Installed Apps entry.
 3. Open Printora. Select installed scanner/printer drivers as needed.
 
@@ -25,7 +32,7 @@ Upgrades retain the existing installation directory. Uninstall retains studio da
 | **Scan Studio** | Select scanner and resolution; defaults are **300 DPI / A4**. Click Preview, drag an area on the scanner-bed image, then Scan Now. Advanced controls, paper choices and reusable named areas are in its Settings. |
 | **Quick Copy** | Select scanner, printer and quantity; click **Copy Color** or **Copy Black & White**. Fresh defaults are **150 DPI / A4 / Fit to paper**. |
 | **Print Set** | Scan the first page, choose **Add page** for subsequent pages, then **Finish & Print** to submit the collated set without another normal Print click. |
-| **BD NID Card Print** | Scan Front/Back or import files. Detected crops are accepted for PDF preview. One combined image can supply both sides. Adjust four square crop handles per side; pressing a handle reveals the original scan transparently. Review, then Print. |
+| **ID Card Print** | Scan Front/Back or import files. Detected crops are accepted for PDF preview. One combined image can supply both sides. Adjust four square crop handles per side; pressing a handle reveals the original scan transparently. Review, then Print. |
 | **Cropper** | Detect or draw photographs on a scan, adjust/straighten crops, and keep them in the permanent numbered library. |
 | **Portrait / Joint Maker** | Choose prepared photos, remove backgrounds, frame and edit subjects. Quantity and Preview PDF are above the canvas; advanced controls are in Settings. Joint accepts two separate subjects or an already-combined image. |
 | **Multi Photo Print** | Combine finished compositions and sizes, set per-item quantities, arrange A4 sheets, save sessions and export PDFs. |
@@ -35,7 +42,7 @@ The default portrait recipe is **42 × 52 mm**; joint defaults to **55 × 45 mm*
 
 Quick Copy's **Fit** policy can reduce a full-page document to fit printer margins. Use its Settings for Actual/Custom sizing when document dimensions matter. This does not change photo-maker sizing. Explicit Copy/Finish/Print requests validate the selected printer and geometry; missing devices, invalid layouts and unresolved prior submissions require review rather than silent retries or switching printers.
 
-NID front/back are centered together on the page by default. Pale/rounded card boundaries use multiple contrast passes. Detection remains adjustable: for an old saved crop, re-import the file or use **Settings → Auto Detect boundary**. Existing saved crops are not automatically rewritten. This reproduces an existing card; it does not edit identity fields.
+ID-card front/back are centered together on the page by default. Pale/rounded card boundaries use multiple contrast passes. Detection remains adjustable: for an old saved crop, re-import the file or use **Settings → Auto Detect boundary**. Existing saved crops are not automatically rewritten. This reproduces an existing card; it does not edit identity fields.
 
 ## Editing
 
@@ -83,7 +90,7 @@ python -m venv .venv
 Alternatively, `setup.bat` creates the environment and `run.bat` starts the app. Model installation is a separate explicit download. For a Windows installer, run **`build.bat`**:
 
 ```text
-dist/installers/Printora-3.3.2-Setup.exe              Client installer
+dist/installers/Printora-3.3.3-Setup.exe              Client installer
 dist/candidate/StudioPhotoMaker/                    Complete portable payload
 ```
 
@@ -100,4 +107,4 @@ Read [development and AI handoff](docs/DEVELOPMENT.md) before changing code, and
 - WIA and installed 32-bit TWAIN interfaces are supported; no manufacturer driver is bundled. TWAIN64, duplex and eSCL are not implemented.
 - Physical scanner/printer, ruler/color, clean-machine and publisher-signing acceptance remain separate checks. The installer is unsigned. Queued output is not proof of a successful physical print.
 
-Report reproducible issues at [GitHub Issues](https://github.com/ovi2riyad/Printora/issues), without attaching private photos, databases or backups publicly. Project-wide open-source licensing has not been selected; component notices remain applicable.
+Report reproducible issues at [GitHub Issues](https://github.com/ovi2riyad/Printora/issues), without attaching private photos, databases or backups publicly. Printora is open source under the [MIT License](LICENSE). You may use, modify, share and sell copies while retaining the copyright and license notice. Imported photos and customer documents are not covered by this grant. Bundled components retain their [separate licenses](THIRD_PARTY.md).

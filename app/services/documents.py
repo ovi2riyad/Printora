@@ -97,7 +97,7 @@ class DocumentSession:
         landscape=bool(settings.get('landscape',False));pw,ph=paper[::-1] if landscape else paper
         margin=float(settings.get('margin',10));copies=int(settings.get('copies',1))
         if not 1<=copies<=100 or not 0<=margin<min(pw,ph)/2:raise ValueError('Invalid copies or margins')
-        job=Job(name='BD NID copy' if self.kind=='nid' else 'Document copy',print_settings=dict(policy='document',document_paper_mm=list(paper),landscape=landscape,margin=margin,enforce_margins=True,dpi=300))
+        job=Job(name='ID Card Print' if self.kind=='nid' else 'Document copy',print_settings=dict(policy='document',document_paper_mm=list(paper),landscape=landscape,margin=margin,enforce_margins=True,dpi=300))
         sizes=[]
         for page in self.pages:
             if not page.dpi_trusted and (settings.get('scale_mode','actual')!='fit' and (self.kind!='nid' or settings.get('actual_card'))):raise ValueError('Physical size is unknown. Verify the imported page DPI or explicitly choose Fit.')

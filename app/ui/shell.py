@@ -82,7 +82,7 @@ class StudioShell:
         from app.ui.document_studio import DocumentStudio
         self.copy=DocumentStudio(w,'copy');self.nid=DocumentStudio(w,'nid');w.stack.addWidget(self.copy);w.stack.addWidget(self.nid)
         entries=[('Dashboard',lambda:w.home(),w.stack.widget(0)),('Scan Studio',lambda:w.hardware.open_scan(),self.scan),
-            ('Quick Copy',lambda:self.open(self.copy),self.copy),('BD NID Card Print',lambda:self.open(self.nid),self.nid),
+            ('Quick Copy',lambda:self.open(self.copy),self.copy),('ID Card Print',lambda:self.open(self.nid),self.nid),
             ('Portrait Maker',lambda:w.start_workflow('portrait'),w.stack.widget(1)),('Joint Photo Maker',lambda:w.start_workflow('joint'),w.stack.widget(1)),
             ('Multi Photo Print',lambda:w.studio.show(w.studio.multi),w.studio.multi),('Photo Library',lambda:w.studio.show(w.studio.library),w.studio.library),
             ('Customers',lambda:w.studio.show(w.studio.customer_page),w.studio.customer_page),('Orders & Reprints',lambda:w.studio.show(w.studio.order_page),w.studio.order_page),
@@ -173,7 +173,7 @@ class StudioShell:
         self.action_cards=[]
         actions=[('Scan Photos','Scan, crop and prepare photos','scan',lambda:self.w.hardware.open_scan(),'blue'),
                  ('Quick Copy','Scan and print copies','copy',lambda:self.open(self.copy),'green'),
-                 ('BD NID Card Print','Prepare front and back together','card',lambda:self.open(self.nid),'purple'),
+                 ('ID Card Print','Prepare front and back together','card',lambda:self.open(self.nid),'purple'),
                  ('Print Existing Files','Import images or PDF pages','print',self.import_existing,'amber')]
         for title,detail,name,fn,accent in actions:
             card=WorkflowCard();card.setObjectName('workflow');card.setProperty('accent',accent);card.setAccessibleName(title);card.setMinimumHeight(148);card.clicked.connect(fn);v=QVBoxLayout(card);v.setContentsMargins(10,12,10,12);v.setSpacing(6)

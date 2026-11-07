@@ -1,6 +1,18 @@
 # Validation and release limits
 
-This file records executed checks and separates software verification from physical studio acceptance. Current version: **3.3.2**. Live hosted results are available in [Windows tests](https://github.com/ovi2riyad/Printora/actions/workflows/tests.yml).
+This file records executed checks and separates software verification from physical studio acceptance. Current version: **3.3.3**. Live hosted results are available in [Windows tests](https://github.com/ovi2riyad/Printora/actions/workflows/tests.yml).
+
+## 3.3.3 credits, licensing and naming
+
+The public website is **https://enthugo.com**. GitHub and Settings → About now show a coordinated creator card for Riyad Ahmed Ovi, the requested email and the ChatGPT Codex development credit. About displays the complete MIT license locally in a readable dialog. The installer retains MIT, LGPL/GPL, PDFium/model and wheel-supplied component notices.
+
+The public workspace name is **ID Card Print** in navigation, dashboard, workspace/settings titles, preview/save dialogs and newly generated job titles. Internal `nid` keys/classes and existing saved records remain compatible; this is a naming change, not a detection or layout change.
+
+During this update the complete local suite passed **535 tests, 13 optional-fixture skips, no failures/errors**, with two existing Pillow warnings (296.83 s). This run preceded the final label-only rename. The final rename is checked through native widgets and the complete hosted Windows workflow. About/payload/offline-license regressions passed **4/4 on native Windows at both 100% and 200% scaling**. The earlier pre-viewer pass was 534 passed / 13 skipped.
+
+After the label rename, the native About/document workflow suite passed **34 tests / 1 private-fixture skip** (46.35 s). Four direct native probes checked the dashboard/navigation, workspace/settings/job titles, preview title, and an actual offline MIT-license modal. Light/Dark creator cards and the license dialog were visually inspected.
+
+The final bundled payload passed **32 workflow checks at 100% and 200% Windows scaling** (9.75 / 8.75 s), using a different cwd, Python-free PATH, fresh app data and no external model override. Its license inventory contains 57 notice/metadata files. The installer verifier now additionally checks the corrected publisher website and installed license/creator files, for seven acceptance checks in total. The release notes identify the published commit's full Windows CI and final installer acceptance; physical hardware tests remain deferred.
 
 ## Coverage
 
@@ -14,7 +26,7 @@ Before removal of private fixtures, 3.3.1 passed **544 tests**, no failures/erro
 
 The pale NID fix combines contrast thresholds and small edge-gap closing on detection previews. Cropped outputs and the centered actual PDF were visually inspected. Original bytes stayed unchanged. Existing manual crops remain untouched until explicit re-detection or re-import.
 
-## Current release checks
+## Recorded 3.3.2 release checks
 
 | Executed local check | Result |
 |---|---|

@@ -23,7 +23,8 @@ def registration(target):
             if '4F077504-7244-4BEB-B290-FE8758932B47' not in name or 'InstallerTest' not in name:continue
             with winreg.OpenKey(root,name) as key:
                 if Path(winreg.QueryValueEx(key,'InstallLocation')[0]).resolve()==target:
-                    return {'key':name,'name':winreg.QueryValueEx(key,'DisplayName')[0],'version':winreg.QueryValueEx(key,'DisplayVersion')[0]}
+                    return {'key':name,'name':winreg.QueryValueEx(key,'DisplayName')[0],'version':winreg.QueryValueEx(key,'DisplayVersion')[0],
+                        'publisher':winreg.QueryValueEx(key,'Publisher')[0],'website':winreg.QueryValueEx(key,'URLInfoAbout')[0]}
     return None
 
 
@@ -38,6 +39,12 @@ def main():
         flags=['/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-']
         run([installer,*flags,f'/LOG={root / "install.log"}']);assert (app/'Printora.exe').is_file() and (app/'_internal/models/u2net_human_seg.onnx').is_file()
         entry=registration(app);assert entry and entry['name'].startswith('Printora Installer Test'),repr(entry);checks.append('Installed files, bundled model and Windows Installed Apps entry')
+        from app.credits import AUTHOR,WEBSITE
+        assert entry['publisher']==AUTHOR and entry['website']==WEBSITE
+        for name in ('LICENSE','CREDITS.md','assets/creator-card.svg','licenses/LGPL-3.0.txt','licenses/GPL-3.0.txt','licenses/packages/Python/LICENSE.txt'):
+            assert (app/name).read_bytes()==(Path(args.payload)/name).read_bytes(),name
+        assert WEBSITE in (app/'CREDITS.md').read_text(encoding='utf-8')
+        checks.append('Creator website, Windows publisher and installed license/credit files match the payload')
         shortcut_script="$w=New-Object -ComObject WScript.Shell; $paths=@((Join-Path $env:PRINTORA_TEST_ROOT 'Desktop\\Printora.lnk'),(Join-Path $env:PRINTORA_TEST_ROOT 'StartMenu\\Printora\\Printora.lnk')); foreach($p in $paths){if(!(Test-Path -LiteralPath $p)){throw 'Missing shortcut'}; $s=$w.CreateShortcut($p); if($s.TargetPath -ne (Join-Path $env:PRINTORA_TEST_ROOT 'Application\\Printora.exe')){throw 'Wrong shortcut target'}; if($s.WorkingDirectory -ne (Join-Path $env:PRINTORA_TEST_ROOT 'Application')){throw 'Wrong working directory'}}"
         shortcut_env=dict(environment,PRINTORA_TEST_ROOT=str(root));run(['powershell','-NoProfile','-NonInteractive','-Command',shortcut_script],shortcut_env);checks.append('Desktop and Start menu shortcut targets and working directories')
         user=root/'UserData/StudioPhotoMaker';user.mkdir(parents=True,exist_ok=True);sentinel=user/'preserve-me.txt';sentinel.write_text('Existing customer data must survive upgrade and uninstall.');unknown=app/'customer-created.txt';unknown.write_text('Unknown file: never remove with wildcard uninstall.')

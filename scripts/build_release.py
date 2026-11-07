@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from importlib.metadata import distribution
 from app.version import VERSION
 from scripts.setup_installer import ROOT,install_compiler
 
@@ -25,11 +26,39 @@ def prepare_payload(payload):
     payload=Path(payload).resolve()
     required=[payload/'StudioPhotoMaker.exe',payload/'_internal/models/u2net_human_seg.onnx']
     if not all(p.is_file() for p in required):raise ValueError('The complete application and bundled portrait model are required before building Setup.')
-    for name in ('README.md','CREDITS.md','THIRD_PARTY.md'):
+    for name in ('README.md','CREDITS.md','THIRD_PARTY.md','LICENSE'):
         shutil.copy2(ROOT/name,payload/name)
     shutil.copytree(ROOT/'docs',payload/'docs',dirs_exist_ok=True)
+    (payload/'assets').mkdir(exist_ok=True)
+    shutil.copy2(ROOT/'assets/creator-card.svg',payload/'assets/creator-card.svg')
+    shutil.copytree(ROOT/'licenses',payload/'licenses',dirs_exist_ok=True)
+    copy_dependency_notices(payload/'licenses/packages')
     make_icon(payload/'Printora.ico')
     return payload
+
+
+def copy_dependency_notices(destination):
+    """Retain wheel-supplied notices and exact metadata beside the application."""
+    packages=('PySide6-Essentials','PySide6-PDF','shiboken6','Pillow','opencv-python-headless',
+        'reportlab','onnxruntime','numpy','flatbuffers','protobuf','packaging','charset-normalizer')
+    for name in packages:
+        dist=distribution(name)
+        target=destination/name.lower().replace('-','_')
+        target.mkdir(parents=True,exist_ok=True)
+        (target/'METADATA').write_text(dist.read_text('METADATA') or '',encoding='utf-8')
+        for item in dist.files or ():
+            path=Path(str(item))
+            if path.is_absolute() or '..' in path.parts:continue
+            if not ('licenses' in path.parts or path.name.lower().startswith(('license','copying','notice','copyright','authors'))):continue
+            source=Path(dist.locate_file(item))
+            if not source.is_file():continue
+            output=target/path
+            output.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(source,output)
+    python_license=Path(sys.base_prefix)/'LICENSE.txt'
+    if not python_license.is_file():raise ValueError('Python runtime LICENSE.txt is required for redistribution.')
+    (destination/'Python').mkdir(exist_ok=True)
+    shutil.copy2(python_license,destination/'Python/LICENSE.txt')
 
 
 def compile_installer(payload,output=None,test_root=None):

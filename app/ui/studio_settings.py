@@ -82,13 +82,9 @@ class StudioSettings(Settings):
         button=QPushButton('Clear old unreferenced cache files');button.clicked.connect(lambda:self.run(lambda:clear_safe_cache(root,references),lambda value:self.notify(f'Removed {value["files"]} old cache files ({value["bytes"]/1_000_000:.1f} MB). Saved-job images were retained.')));storage.addRow(button)
         cleanup=QPushButton('Clean abandoned temporary sessions / helper requests (older than 7 days)');cleanup.clicked.connect(self.cleanup_temporary);storage.addRow(cleanup)
         note=QLabel('Restore verifies checksums and database integrity, remaps asset paths, and retains the current data folder before restarting. Cache cleanup keeps all saved-job references and current edits.');note.setWordWrap(True);storage.addRow(note)
-        from app.credits import AUTHOR,WEBSITE,EMAIL,DEVELOPMENT_CREDIT
-        from app.version import VERSION
+        from app.ui.about import creator_card
         about=tab('About')
-        credits=QLabel(f'<h2>Printora {VERSION}</h2><p>Photography &amp; Document Studio</p>'
-            f'<p><b>{AUTHOR}</b></p><p><a href="{WEBSITE}">{WEBSITE}</a><br>'
-            f'<a href="mailto:{EMAIL}">{EMAIL}</a></p><p>{DEVELOPMENT_CREDIT}</p>')
-        credits.setObjectName('appCredits');credits.setWordWrap(True);credits.setOpenExternalLinks(True);about.addRow(credits)
+        about.addRow(creator_card())
         self.message=QLabel();self.message.setWordWrap(True);outer.addWidget(self.message);button=QPushButton('Save preferences');button.clicked.connect(self.save);outer.addWidget(button)
         for mode,key in [('portrait','default_profile'),('joint','joint_profile')]:
             self.fields[key].currentIndexChanged.connect(lambda index,m=mode,k=key:self.default_profile_changed(m,k))

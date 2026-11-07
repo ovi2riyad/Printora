@@ -47,7 +47,7 @@ class NIDView(QGraphicsView):
 class NIDPreview(QDialog):
     def __init__(self,workspace):
         super().__init__(workspace.w);self.owner=workspace;self.w=workspace.w;self.job=None;self.path=None;self.generation=0;self.printed=False;self.maps={};self.handles={};self.overlay=None;self.overlay_side=None
-        self.setWindowTitle('NID — Adjust corners and print');self.resize(930,820)
+        self.setWindowTitle('ID Card Print — Adjust corners and print');self.resize(930,820)
         screen=self.screen()
         if screen:self.resize(min(930,screen.availableGeometry().width()-30),min(820,screen.availableGeometry().height()-50))
         layout=QVBoxLayout(self);heading=QLabel('Front + Back · PDF preview');heading.setObjectName('title');layout.addWidget(heading)
@@ -145,7 +145,7 @@ class NIDPreview(QDialog):
     def save_pdf(self):
         if not self.job or self.w.busy:return
         if self.snapshot!=self.state():self.rebuild(save_after=True);return
-        path,_=QFileDialog.getSaveFileName(self,'Save reviewed NID PDF',dialog_output(self.w.db,'card-copy.pdf',self.w.notify),'PDF (*.pdf)')
+        path,_=QFileDialog.getSaveFileName(self,'Save reviewed ID card PDF',dialog_output(self.w.db,'card-copy.pdf',self.w.notify),'PDF (*.pdf)')
         if not path:return
         try:
             if Path(path).suffix.lower()!='.pdf':raise ValueError('Choose a .pdf filename')
