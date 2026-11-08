@@ -14,6 +14,8 @@ Cold 1200 × 1600 processing measured about 5.6 seconds on this CPU; repeating u
 
 The expanded synthetic workflow adds actual Auto Fix/repeat/undo, tight preview fit and Crop-header geometry checks to the prior 40-check acceptance. Frozen and installer results are reported for the new payload separately in the release. Physical scanning/printing remains deferred.
 
+The first installed offscreen workflow exposed an overly strict new QA assertion: a width-limited portrait cannot also fill the viewport height without changing proportions. Acceptance now derives the attainable fit from both dimensions, with a separate narrow-view regression. The failed candidate result remains in local evidence; it is not counted as installer acceptance.
+
 ## 3.3.3 credits, licensing and naming
 
 The public website is **https://enthugo.com**. GitHub and Settings → About now show a coordinated creator card for Riyad Ahmed Ovi, the requested email and the ChatGPT Codex development credit. About displays the complete MIT license locally in a readable dialog. The installer retains MIT, LGPL/GPL, PDFium/model and wheel-supplied component notices.

@@ -158,3 +158,18 @@ def test_processing_values_have_room_for_sign_and_both_decimals(window,textured_
     for key in ('denoise','color_denoise','temperature','tint','sharpness'):
         edit=getattr(w,key).lineEdit()
         assert edit.width()>=edit.fontMetrics().horizontalAdvance('-1.00')+12
+
+
+def test_fit_uses_width_when_floating_controls_leave_a_narrow_view(window):
+    from app.ui.transform_canvas import TransformCanvas
+    view=TransformCanvas();view.resize(300,400);view.show()
+    try:
+        photo=Photo(width=42,height=52,layers=[Layer('not-loaded')])
+        view.set_layers(photo,[Image.new('RGBA',(200,260),'#bd9678')]);view.set_preview_obstruction(180)
+        QApplication.processEvents();view.fit_preview()
+        rect=view.mapFromScene(view.photo_rect).boundingRect()
+        expected=min(view.viewport().height()-20,(view.viewport().width()-200)*52/42)
+        assert abs(rect.height()-expected)<3
+        assert rect.width()/rect.height()==pytest.approx(42/52,abs=.02)
+        assert rect.right()<view.viewport().width()-180+8
+    finally:view.close();view.deleteLater()
