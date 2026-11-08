@@ -131,6 +131,8 @@ def prepare_layer(layer,before=False,limit=6000):
                 alpha=Image.composite(original_alpha,alpha,paint)
             else:alpha=Image.composite(Image.new('L',im.size,0),alpha,paint)
         rgb=im.convert('RGB')
+        from app.services.portrait_processing import process_portrait
+        rgb=process_portrait(rgb,layer)
         for field,enhancer in [('brightness',ImageEnhance.Brightness),('contrast',ImageEnhance.Contrast),('saturation',ImageEnhance.Color),('sharpness',ImageEnhance.Sharpness)]:
             value=getattr(layer,field)
             if value!=1:rgb=enhancer(rgb).enhance(value)

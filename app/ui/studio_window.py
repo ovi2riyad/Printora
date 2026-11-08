@@ -7,7 +7,7 @@ from pathlib import Path
 from PIL import Image,ImageDraw
 from PySide6.QtCore import Qt,QTimer,QThreadPool,QUrl,QProcess,QSize
 from PySide6.QtGui import QAction,QColor,QDesktopServices,QIcon
-from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,QStackedWidget,QFrame,QScrollArea,QDoubleSpinBox,QSpinBox,QComboBox,QCheckBox,QFileDialog,QColorDialog,QMessageBox,QProgressBar,QDialog,QListWidget,QDialogButtonBox,QTabWidget,QButtonGroup,QSizePolicy)
+from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,QStackedWidget,QFrame,QScrollArea,QDoubleSpinBox,QSpinBox,QComboBox,QCheckBox,QFileDialog,QColorDialog,QMessageBox,QProgressBar,QDialog,QListWidget,QDialogButtonBox,QTabWidget,QButtonGroup,QSizePolicy,QToolButton)
 from app.core.database import Database,data_root
 from app.models.domain import Photo,Layer,Job
 from app.services.imaging import import_info,face_position,remove_background,render_photo,find_background_model,resolution_warnings,prepare_layer,render_bordered_photo,export_photo_image
@@ -58,7 +58,7 @@ class StudioWindow(QMainWindow):
         self.home_button=self.button('Dashboard',self.home);header.addWidget(self.home_button);self.button('Cropper / library',self.open_cropper,header);self.button('Photo profiles',self.profiles_dialog,header);self.button('Save job',self.save_job,header);self.button('Saved jobs',self.open_jobs,header);self.button('Settings',self.settings_dialog,header);layout.addLayout(header)
         self.stack=WorkspaceStack();layout.addWidget(self.stack,1);self.stack.addWidget(self.dashboard());self.stack.addWidget(self.workspace());self.stack.addWidget(self.print_page())
         self.cropper=Cropper(self.tray,self.run,self.notify,self.use_crops,db=self.db);self.stack.addWidget(self.cropper)
-        footer=QHBoxLayout();self.status=QLabel('Ready. All photographs stay on this PC.');self.status.setWordWrap(True);footer.addWidget(self.status,1);self.progress=QProgressBar();self.progress.setRange(0,0);self.progress.setFixedWidth(140);self.progress.hide();footer.addWidget(self.progress);layout.addLayout(footer)
+        footer=QHBoxLayout();self.status=QLabel('Ready. All photographs stay on this PC.');self.status.setWordWrap(True);self.status.setTextFormat(Qt.PlainText);self.status.setMaximumHeight(38);self.status.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Preferred);footer.addWidget(self.status,1);self.progress=QProgressBar();self.progress.setRange(0,0);self.progress.setFixedWidth(140);self.progress.hide();footer.addWidget(self.progress);layout.addLayout(footer)
         for title,key,fn in [('Import','Ctrl+O',self.import_to_cropper),('Save','Ctrl+S',self.save_job),('Undo','Ctrl+Z',self.undo_edit),('Redo','Ctrl+Shift+Z',self.redo_edit),('Redo','Ctrl+Y',self.redo_edit),('Transform','Ctrl+T',lambda:self.canvas.set_tool('move')),('Fit view','Ctrl+0',lambda:self.canvas.fitInView(self.canvas.sceneRect(),Qt.KeepAspectRatio)),('100%','Ctrl+1',self.canvas.resetTransform)]:
             action=QAction(title,self);action.setShortcut(key);action.triggered.connect(fn);self.addAction(action)
         self._save_generation=0;self._autosave_callback=None;self._save_prompt_active=False
@@ -99,33 +99,45 @@ class StudioWindow(QMainWindow):
     def pair(self,layout,label,widget):
         row=QHBoxLayout();caption=QLabel(label);caption.setWordWrap(True);row.addWidget(caption);row.addStretch();row.addWidget(widget);layout.addLayout(row)
     def workspace(self):
-        page=QWidget();outer=QVBoxLayout(page);outer.setContentsMargins(0,0,0,0);outer.setSpacing(8)
-        self.workflow_title=QLabel('Portrait print');self.workflow_title.setObjectName('title');outer.addWidget(self.workflow_title)
-        row=QHBoxLayout();self.button('Choose library photos',self.choose_prepared,row,True);self.subject=QComboBox();self.subject.currentIndexChanged.connect(self.sync_controls);row.addWidget(self.subject,1)
-        self.guide=QCheckBox('Positioning guide (screen only)');self.guide.setChecked(self.db.get('show_guides',True));self.guide.toggled.connect(self.update_guide);self.before=QCheckBox('Original background');self.before.toggled.connect(self.schedule_preview);outer.addLayout(row)
+        from app.ui.preview_workspace import CompactEditorPage
+        page=CompactEditorPage(self);outer=QVBoxLayout(page);outer.setContentsMargins(0,0,0,0);outer.setSpacing(4)
+        self.editor_actions=QHBoxLayout();outer.addLayout(self.editor_actions)
+        self.workflow_title=QLabel('Portrait print');self.workflow_title.setObjectName('section');self.editor_actions.addWidget(self.workflow_title)
+        self.choose_photo_button=self.button('Choose photo',self.choose_prepared,self.editor_actions,True);self.editor_actions.addStretch()
+        self.subject=QComboBox();self.subject.currentIndexChanged.connect(self.sync_controls)
+        self.guide=QCheckBox('Positioning guide (screen only)');self.guide.setChecked(self.db.get('show_guides',True));self.guide.toggled.connect(self.update_guide);self.before=QCheckBox('Original background');self.before.toggled.connect(self.schedule_preview)
         preview_actions=QHBoxLayout();preview_actions.addWidget(QLabel('Quantity'))
         self.quantity=QSpinBox();self.quantity.setRange(1,10000);self.quantity.setValue(4);self.quantity.setMaximumWidth(100);self.quantity.valueChanged.connect(self.controls_changed);preview_actions.addWidget(self.quantity)
-        for n in (2,4,6,8):self.button(str(n),lambda checked=False,v=n:self.quantity.setValue(v),preview_actions)
-        preview_actions.addStretch();self.top_preview=self.button('Preview PDF',self.show_print,preview_actions,True);outer.addLayout(preview_actions)
+        self.quick_quantities=[]
+        for n in (2,4,6,8):self.quick_quantities.append(self.button(str(n),lambda checked=False,v=n:self.quantity.setValue(v),preview_actions))
+        from app.ui.icons import icon
+        self.background_swatches=[]
+        for name,color in [('Sky blue','#ADD8E6'),('White','#FFFFFF'),('Blue','#0078D4')]:
+            swatch=QToolButton();swatch.setFixedSize(28,28);swatch.setCheckable(True);swatch.setAccessibleName('Background color: '+name);swatch.setToolTip('Background color');swatch.setStyleSheet(f'QToolButton {{background:{color};border:2px solid #7187a8;border-radius:4px;}} QToolButton:checked {{border:3px solid #24d5ef;}}');swatch.clicked.connect(lambda checked=False,c=color:self.set_color('background',c));preview_actions.addWidget(swatch);self.background_swatches.append((swatch,color))
+        self.background_color=QToolButton();self.background_color.setText('…');self.background_color.setToolTip('Background color · More colors');self.background_color.setAccessibleName('More background colors');self.background_color.clicked.connect(lambda:self.pick_color('background'));preview_actions.addWidget(self.background_color)
+        self.auto_soften=QPushButton('Auto soften');self.auto_soften.setCheckable(True);self.auto_soften.setToolTip('Natural face/skin smoothing. Click again to remove it. Original pixels stay unchanged.');self.auto_soften.clicked.connect(self.toggle_softener);preview_actions.addWidget(self.auto_soften)
+        preview_actions.addStretch();self.top_preview=self.button('Preview PDF',self.show_print,self.editor_actions,True);outer.addLayout(preview_actions)
         options=QHBoxLayout();options.addWidget(self.guide);options.addWidget(self.before);options.addStretch();outer.addLayout(options)
         body=QHBoxLayout();outer.addLayout(body,1)
         left=QVBoxLayout();left.setSpacing(6);toolbar=QHBoxLayout();self.tool_group=QButtonGroup(self);self.tool_buttons={}
         for text,tool in [('Move / transform (V)','move'),('Erase (E)','erase'),('Restore (R)','restore')]:
-            b=self.button(text,lambda checked=False,t=tool:self.canvas.set_tool(t),toolbar);b.setCheckable(True);self.tool_group.addButton(b);self.tool_buttons[tool]=b
+            b=self.button('',lambda checked=False,t=tool:self.canvas.set_tool(t),toolbar);b.setIcon(icon(tool));b.setToolTip(text);b.setAccessibleName(text);b.setFixedSize(30,28);b.setCheckable(True);self.tool_group.addButton(b);self.tool_buttons[tool]=b
             if tool=='move':b.setChecked(True)
-        self.brush_size=QSpinBox();self.brush_size.setMaximumWidth(80);self.brush_size.setRange(4,150);self.brush_size.setValue(24);self.brush_size.valueChanged.connect(lambda v:setattr(self.canvas,'brush_size',v));toolbar.addWidget(QLabel('Brush'));toolbar.addWidget(self.brush_size);left.addLayout(toolbar)
-        self.canvas=TransformCanvas();self.canvas.moved.connect(self.move_subject);self.canvas.zoomed.connect(self.zoom_subject);self.canvas.transformed.connect(self.commit_transform);self.canvas.layer_selected.connect(self.canvas_selection);self.canvas.painted.connect(self.commit_paint);self.canvas.tool_changed.connect(lambda tool:[b.setChecked(key==tool) for key,b in self.tool_buttons.items()]);self.canvas.brush_changed.connect(self.brush_size.setValue);left.addWidget(self.canvas,1)
-        shapes=QHBoxLayout();shapes.addWidget(QLabel('Select shape'))
+        self.brush_size=QSpinBox();self.brush_size.setMaximumWidth(80);self.brush_size.setRange(4,150);self.brush_size.setValue(24);self.brush_size.valueChanged.connect(lambda v:setattr(self.canvas,'brush_size',v));self.brush_caption=QLabel('Brush');toolbar.addWidget(self.brush_caption);toolbar.addWidget(self.brush_size);left.addLayout(toolbar)
+        self.canvas=TransformCanvas();self.canvas.setMinimumSize(160,60);self.canvas.moved.connect(self.move_subject);self.canvas.zoomed.connect(self.zoom_subject);self.canvas.transformed.connect(self.commit_transform);self.canvas.layer_selected.connect(self.canvas_selection);self.canvas.painted.connect(self.commit_paint);self.canvas.tool_changed.connect(lambda tool:[b.setChecked(key==tool) for key,b in self.tool_buttons.items()]);self.canvas.brush_changed.connect(self.brush_size.setValue);left.addWidget(self.canvas,1)
+        shapes=QHBoxLayout();self.shape_caption=QLabel('Select shape');shapes.addWidget(self.shape_caption)
         self.shape_picker=QComboBox()
         for label,key in [('Rectangle','rectangle'),('Square','square'),('Ellipse','ellipse'),('Circle','circle'),('Freehand','lasso'),('Polygon','polygon')]:self.shape_picker.addItem(label,key)
         def select_shape(index):
             key=self.shape_picker.itemData(index);self.canvas.set_tool({'square':'rectangle','circle':'ellipse'}.get(key,key));self.canvas.shape_constraint=key in ('square','circle');self.canvas.selection_mode='new';self.canvas.setFocus()
         self.shape_picker.activated.connect(select_shape);shapes.addWidget(self.shape_picker)
-        self.button('Delete selected',lambda:self.canvas.edit_selection(),shapes);self.button('Deselect',lambda:self.canvas.modify_selection('deselect'),shapes);shapes.addStretch()
-        left.insertLayout(1,shapes)
-        shape_hint=QLabel('Drag a shape • Shift: square / circle • Ctrl+Shift: add a square / circle • Delete: erase');shape_hint.setWordWrap(True);shape_hint.setObjectName('muted');left.insertWidget(2,shape_hint)
-        viewbar=QHBoxLayout();self.button('Fit view',lambda:self.canvas.fitInView(self.canvas.sceneRect(),Qt.KeepAspectRatio),viewbar);self.button('100%',self.canvas.resetTransform,viewbar);viewbar.addWidget(QLabel('Ctrl+wheel: view zoom  ·  Space+drag: pan  ·  Arrows: nudge'),1);left.addLayout(viewbar)
-        self.crop_hint=QLabel('Import a photograph to begin.');self.crop_hint.setWordWrap(True);left.addWidget(self.crop_hint);canvas_area=QWidget();canvas_area.setLayout(left)
+        for title,name,fn in [('Delete selected','delete',lambda:self.canvas.edit_selection()),('Deselect','deselect',lambda:self.canvas.modify_selection('deselect'))]:
+            button=self.button('',fn,shapes);button.setIcon(icon(name));button.setFixedSize(30,28);button.setToolTip(title);button.setAccessibleName(title)
+        toolbar.addLayout(shapes);toolbar.addStretch();self.shape_picker.setMaximumWidth(110)
+        self.canvas.setToolTip('Drag a selection; Shift: square/circle; Ctrl+Shift: add. Delete: erase. Ctrl+wheel: zoom; Space+drag: pan; arrows: nudge.')
+        from app.ui.preview_workspace import FloatingFit,FloatingPanelHost
+        self.canvas_fit=FloatingFit(self.canvas)
+        self.crop_hint=QLabel('Import a photograph to begin.');self.crop_hint.hide();canvas_area=QWidget();left.setContentsMargins(0,0,0,0);canvas_area.setLayout(left)
         panel=QWidget();panel_layout=QVBoxLayout(panel);panel_layout.setContentsMargins(0,0,0,0);tabs=QTabWidget();self.editor_tabs=tabs;panel_layout.addWidget(tabs,1)
         def tab(title):
             content=QWidget();layout=QVBoxLayout(content);layout.setContentsMargins(10,8,10,12);layout.setSpacing(9);scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff);scroll.setWidget(content);tabs.addTab(scroll,title);return layout
@@ -148,14 +160,9 @@ class StudioWindow(QMainWindow):
         tools=tab('Finish');self.section(tools,'BACKGROUND & EDGE REFINEMENT')
         self.remove_button=self.button('Apply crop & remove background',self.remove_backgrounds,tools,True)
         self.background_status=QLabel('Background has not been removed.');self.background_status.setWordWrap(True);tools.addWidget(self.background_status)
-        colors=QHBoxLayout()
-        for name,color in [('Sky blue','#ADD8E6'),('White','#FFFFFF'),('Gray','#D3D3D3')]:self.button(name,lambda checked=False,c=color:self.set_color('background',c),colors)
-        tools.addLayout(colors);self.background_color=self.button('Custom background color',lambda:self.pick_color('background'),tools)
         self.pair(tools,'Contract / expand edge',self.make_control('erosion',-8,8,0,1));self.pair(tools,'Edge softness',self.make_control('feather',0,8,0,.25))
         self.pair(tools,'Reduce edge halo',self.make_control('defringe',0,1,0,.05))
-        self.section(tools,'LIGHT & COLOR')
-        for text,key,low,high in [('Brightness','brightness',.4,1.8),('Contrast','contrast',.4,1.8),('Color','saturation',0,2),('Sharpness','sharpness',0,3)]:self.pair(tools,text,self.make_control(key,low,high,1,.05))
-        self.button('Reset light & color',self.reset_adjustments,tools);tools.addStretch()
+        tools.addStretch()
         tools=tab('Print')
         self.border=QCheckBox('Add border inside photo');self.border.setChecked(True);self.border.toggled.connect(self.controls_changed);tools.addWidget(self.border)
         self.border_mm=self.spin(0,5,.2,.05);self.border_mm.setSuffix(' mm');self.border_color=self.button('Border color · #808080',lambda:self.pick_color('border_color'),tools)
@@ -170,18 +177,27 @@ class StudioWindow(QMainWindow):
         tools.addStretch()
         from app.ui.workflow_settings import WorkflowSettings
         self.photo_settings=WorkflowSettings(page,'Portrait / Joint');self.photo_settings.add_widget(panel);outer.removeItem(options);self.photo_settings.add_layout(options)
-        self.photo_settings_button=self.button('Settings',self.photo_settings.open_settings,preview_actions)
-        basic=QWidget();basic_layout=QVBoxLayout(basic)
+        self.photo_settings_button=self.button('',self.photo_settings.open_settings,self.editor_actions);self.photo_settings_button.setIcon(icon('settings'));self.photo_settings_button.setToolTip('Photo settings');self.photo_settings_button.setAccessibleName('Photo settings');self.photo_settings_button.setFixedWidth(34)
+        self.floating_tabs=QTabWidget();self.floating_tabs.setMinimumSize(0,0)
+        processing=QWidget();processing_form=QVBoxLayout(processing);processing_form.setContentsMargins(8,4,8,6);processing_form.setSpacing(5)
+        processing_scroll=QScrollArea();processing_scroll.setWidgetResizable(True);processing_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff);processing_scroll.setWidget(processing);self.floating_tabs.addTab(processing_scroll,'Image Processing')
+        self.subject.setMinimumContentsLength(8);self.subject.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon);processing_form.addWidget(self.subject)
+        for label,key,low,high,value in [('Noise reduction','denoise',0,1,0),('Brightness','brightness',.4,1.8,1),('Contrast','contrast',.4,1.8,1),('Color','saturation',0,2,1),('Shadows','shadows',-1,1,0),('Warmth','temperature',-1,1,0),('Sharpness','sharpness',0,3,1),('Skin soften','skin_soften',0,1,0)]:
+            control=self.make_control(key,low,high,value,.05);control.setMaximumWidth(78);self.pair(processing_form,label,control)
+        self.button('Reset processing',self.reset_adjustments,processing_form);processing_form.addStretch()
+        basic=QWidget();basic_layout=QVBoxLayout(basic);basic_layout.setContentsMargins(6,4,6,6)
         for widget in (self.profile_picker,self.apply_profile_button):basic_layout.addWidget(widget)
-        for layout in (sizes,crop_buttons,colors):
+        for layout in (sizes,crop_buttons):
             previous=layout.parent()
             if previous is not None:previous.removeItem(layout)
             basic_layout.addLayout(layout)
-        for widget in (self.background_color,self.border):basic_layout.addWidget(widget)
-        border_row=QHBoxLayout();border_row.addWidget(QLabel('Border width'));border_row.addWidget(self.border_mm);basic_layout.addLayout(border_row);basic_layout.addWidget(self.border_color);basic_layout.addStretch()
+        for button in [crop_buttons.itemAt(i).widget() for i in range(crop_buttons.count())]:
+            if button:button.setMinimumWidth(0)
+        self.pair(basic_layout,'Border width',self.border_mm);basic_layout.addWidget(self.border_color);basic_layout.addWidget(self.border);basic_layout.addStretch()
+        basic_scroll=QScrollArea();basic_scroll.setWidgetResizable(True);basic_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff);basic_scroll.setWidget(basic);self.floating_tabs.addTab(basic_scroll,'Size')
         def advanced_tab(index):self.editor_tabs.setCurrentIndex(min(index,self.editor_tabs.count()-1));self.photo_settings.open_settings()
-        self.editor_panel=AdaptivePanel(basic,self.db,'editor','Photo controls',[(title,name,lambda i=i:advanced_tab(i)) for i,(title,name) in enumerate([('Transform','portrait'),('Finish','tools'),('Print settings','print'),('Selection / Mask','library')])],default_width=350,minimum_width=300)
-        self.editor_splitter=splitter(canvas_area,self.editor_panel);body.addWidget(self.editor_splitter)
+        self.editor_panel=AdaptivePanel(self.floating_tabs,self.db,'editor','Photo controls',default_width=280,minimum_width=160)
+        self.editor_splitter=FloatingPanelHost(canvas_area,self.editor_panel);body.addWidget(self.editor_splitter)
         return page
     def make_control(self,name,*args):
         control=self.spin(*args);setattr(self,name,control);return control
@@ -197,7 +213,8 @@ class StudioWindow(QMainWindow):
     def apply_theme(self):
         from app.ui.theme import apply_theme
         apply_theme(self)
-    def notify(self,text):self.status.setText(text)
+        if hasattr(self,'editor_splitter'):self.editor_splitter.refresh_theme()
+    def notify(self,text):self.status.setText(text);self.status.setToolTip(text)
     def run(self,fn,done,on_error=None):
         if self.busy:self.notify('Finishing the current step…');return
         self.busy=True;self.progress.show();self.stack.setEnabled(False);self.home_button.setEnabled(False)
@@ -282,7 +299,7 @@ class StudioWindow(QMainWindow):
         for key in ('margin','gap_x','gap_y','landscape','layout','rows','columns','dpi'):self.job.print_settings[key]=self.db.get(key,self.job.print_settings.get(key,2 if key in ('rows','columns') else False))
         self.undo.clear();self.redo.clear();self.dirty=False;self.sync_print_options();self.refresh_profiles()
         self.workflow_title.setText(self.photo.name);self.canvas.display(Image.new('RGB',(450,550) if mode=='portrait' else (550,450),'#e6edf2'));self.crop_hint.setText('Choose one library photo and match the face and shoulders to the guide.' if mode=='portrait' else 'Choose one existing couple photo or two separate portraits. A combined photograph stays in one group.')
-        self.sync_controls();self.stack.setCurrentIndex(1)
+        self.floating_tabs.setCurrentIndex(0);self.sync_controls();self.stack.setCurrentIndex(1)
         return True
     def layer(self):
         i=self.subject.currentIndex();return self.photo.layers[i] if self.photo and 0<=i<len(self.photo.layers) else None
@@ -322,19 +339,26 @@ class StudioWindow(QMainWindow):
         self.workflow_title.setText('Portrait Maker' if self.mode=='portrait' else 'Joint Photo Maker')
         self.sheet_rotation.setCurrentIndex(max(0,self.sheet_rotation.findData(p.print_rotation)))
         self.width.setValue(p.width);self.height.setValue(p.height);self.quantity.setValue(p.quantity);self.border.setChecked(p.border);self.border_mm.setValue(p.border_mm)
-        labels=[('Combined group' if p.kind=='Combined joint' else f'Person {i+1}')+f' · {l.label or Path(l.source).name}' for i,l in enumerate(p.layers)]
+        labels=[]
+        for i,layer in enumerate(p.layers):
+            name=Path(layer.label).name if layer.label and Path(layer.label).is_absolute() else layer.label
+            labels.append(('Combined group' if p.kind=='Combined joint' else f'Person {i+1}')+(' · '+name if name else ''))
         if [self.subject.itemText(i) for i in range(self.subject.count())]!=labels:
             previous=self.subject.currentIndex();self.subject.blockSignals(True);self.subject.clear();self.subject.addItems(labels);self.subject.setCurrentIndex(max(0,min(previous,len(labels)-1)));self.subject.blockSignals(False)
         l=self.layer()
-        for key in ('scale','x','y','rotation','erosion','feather','defringe','brightness','contrast','saturation','sharpness'):
+        for key in ('scale','x','y','rotation','erosion','feather','defringe','brightness','contrast','saturation','sharpness','denoise','shadows','temperature','skin_soften'):
             getattr(self,key).setValue(getattr(l,key) if l else (1 if key in ('scale','brightness','contrast','saturation','sharpness') else .5 if key in ('x','y') else 0))
         self.layer_visible.setChecked(l.visible if l else True);self.layer_locked.setChecked(l.locked if l else False)
-        for key in ('scale','x','y','rotation','erosion','feather','defringe','brightness','contrast','saturation','sharpness'):getattr(self,key).setEnabled(not l or not l.locked)
+        for key in ('scale','x','y','rotation','erosion','feather','defringe','brightness','contrast','saturation','sharpness','denoise','shadows','temperature','skin_soften'):getattr(self,key).setEnabled(not l or not l.locked)
         self.before.blockSignals(True);self.before.setChecked(False);self.before.blockSignals(False)
         count=sum(bool(l.mask) for l in p.layers)
         self.background_status.setText('Background removed. Choose a color below.' if p.layers and count==len(p.layers) else 'Background has not been removed.' if count==0 else f'{count} backgrounds removed.')
         self.remove_button.setText('Remove background again' if p.layers and count==len(p.layers) else 'Apply crop & remove background')
-        self.border_color.setText('Border color · '+p.border_color);self.background_color.setText('Custom background · '+p.background)
+        self.border_color.setText('Border color · '+p.border_color)
+        self.background_color.setToolTip('Background color · More colors · '+p.background)
+        for swatch,color in self.background_swatches:swatch.setChecked(color.lower()==p.background.lower())
+        active=[layer for layer in p.layers if layer.visible and not layer.locked]
+        self.auto_soften.setChecked(bool(active) and all(layer.skin_soften>0 for layer in active));self.auto_soften.setEnabled(bool(active))
         self.syncing=False;self.sync_print_options();self.update_capacity();self.update_guide()
         if redraw:self.schedule_preview()
     def controls_changed(self,*_):
@@ -345,7 +369,7 @@ class StudioWindow(QMainWindow):
             if l.group and not l.locked:
                 from app.services.layer_groups import transform_group
                 transform_group(p,self.subject.currentIndex(),self.x.value(),self.y.value(),self.scale.value(),self.rotation.value())
-            for key in ('scale','x','y','rotation','erosion','feather','defringe','brightness','contrast','saturation','sharpness'):setattr(l,key,round(getattr(self,key).value()) if key=='erosion' else getattr(self,key).value())
+            for key in ('scale','x','y','rotation','erosion','feather','defringe','brightness','contrast','saturation','sharpness','denoise','shadows','temperature','skin_soften'):setattr(l,key,round(getattr(self,key).value()) if key=='erosion' else getattr(self,key).value())
             l.visible=self.layer_visible.isChecked();l.locked=self.layer_locked.isChecked()
         if old_size!=(p.width,p.height):self.job.placements=[]
         elif old_quantity!=p.quantity:
@@ -432,7 +456,14 @@ class StudioWindow(QMainWindow):
         if layer and not layer.locked:
             self.checkpoint()
             for key in ('brightness','contrast','saturation','sharpness'):setattr(layer,key,1.)
+            for key in ('denoise','shadows','temperature','skin_soften'):setattr(layer,key,0.)
             self.sync_controls()
+    def toggle_softener(self,enabled):
+        if self.busy or not self.photo:return
+        self.checkpoint()
+        for layer in self.photo.layers:
+            if layer.visible and not layer.locked:layer.skin_soften=.6 if enabled else 0.
+        self.sync_controls()
     def fit_photo(self,mode='auto'):
         if mode=='auto':mode='balanced'
         if self.busy or not self.photo or not self.photo.layers:return

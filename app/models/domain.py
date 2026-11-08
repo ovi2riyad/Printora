@@ -2,6 +2,14 @@ from dataclasses import dataclass, field, asdict
 import uuid
 import math
 
+PROCESSING_LIMITS={'denoise':(0,1),'shadows':(-1,1),'temperature':(-1,1),'skin_soften':(0,1)}
+
+def validate_layer_processing(layer):
+    for key,(low,high) in PROCESSING_LIMITS.items():
+        value=getattr(layer,key,0)
+        if type(value) not in (int,float) or not math.isfinite(value) or not low<=value<=high:
+            raise ValueError('Invalid image processing setting: '+key)
+
 def uid():
     return uuid.uuid4().hex
 
@@ -27,6 +35,10 @@ class Layer:
     mask_strokes: list = field(default_factory=list)
     defringe: float = 0.0
     group: str = ''
+    denoise: float = 0.0
+    shadows: float = 0.0
+    temperature: float = 0.0
+    skin_soften: float = 0.0
 
 @dataclass
 class Photo:
@@ -47,6 +59,7 @@ class Photo:
     print_rotation: str = 'auto'
 
     def validate(self):
+        for layer in self.layers:validate_layer_processing(layer)
         if self.print_rotation not in ('auto','none','cw','ccw','half'):raise ValueError('Unsupported photo print rotation')
         if not all(math.isfinite(v) and v > 0 for v in (self.width, self.height)):
             raise ValueError('Photo dimensions must be positive finite millimetres.')

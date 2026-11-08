@@ -46,8 +46,8 @@ class HardwareHub(QObject):
         self.w = window; self.scanner_manager = ScannerManager()
         self.scanners = []; self.printers = []; self.scan_dialog = None; self.print_dialog = None
         self.scan_process = HardwareProcess(self); self.printer_process = HardwareProcess(self);self.twain_process=HardwareProcess(self)
-        self.twain_process.succeeded.connect(self.twain_devices);self.twain_process.failed.connect(lambda error:self.status.setToolTip('TWAIN: '+error))
-        self.verified_backends=set();self.fallback_attempts=0
+        self.twain_process.succeeded.connect(self.twain_devices);self.twain_process.failed.connect(self.twain_error)
+        self.verified_backends=set();self.fallback_attempts=0;self.fallback_tried=set();self.fallback_running=False;self.fallback_errors=[]
         self.scan_action = None; self.scan_request = None; self.printing = False
         self.scan_process.succeeded.connect(self.scanner_result)
         self.scan_process.failed.connect(self.scanner_error)
@@ -105,6 +105,7 @@ class HardwareHub(QObject):
             if self.scan_dialog:
                 self.scan_dialog.update_devices()
             self.update_status()
+            if self.scan_dialog and self.scan_dialog.pending_scan and not self.scanners and not self.twain_process.active:self.scan_dialog.error('No available scanner interface was found. Check the connection and installed driver.')
         elif self.scan_dialog:
             self.scan_dialog.result(action, result)
     def twain_devices(self,result):
@@ -114,17 +115,35 @@ class HardwareHub(QObject):
         self.populate(self.scanner,self.scanners,self.w.db.get('scanner_id',''),'No scanner')
         if self.scan_dialog and not self.scan_process.active:self.scan_dialog.update_devices()
         self.update_status()
+        if self.scan_dialog and self.scan_dialog.pending_scan and not self.scanners and not self.scan_process.active:self.scan_dialog.error('No available scanner interface was found. Check the connection and installed driver.')
+
+    def twain_error(self,error):
+        self.status.setToolTip('TWAIN: '+error)
+        if self.scan_dialog and self.scan_dialog.pending_scan and not self.scan_process.active:
+            if self.scanners:self.scan_dialog.update_devices()
+            else:self.scan_dialog.error('Scanner discovery failed: '+error)
 
     def scanner_error(self, error):
         dialog=self.scan_dialog
-        if dialog and self.scan_action=='scan' and self.scan_request:
-            from app.services.hardware import safe_fallback
-            current=next((d for d in self.scanners if d['id']==self.scan_request['device']),{})
-            linked=self.w.db.get('scanner_fallbacks',{}).get(current.get('id'))
-            alternate=next((d for d in self.scanners if d['id']==linked and d['id'] in self.verified_backends),None)
-            started=bool(dialog.folder and (dialog.folder/'acquisition.started').exists())
-            if safe_fallback(started,alternate is not None,self.fallback_attempts):
-                self.fallback_attempts+=1;dialog.retry_request=dict(self.scan_request);dialog.device.setCurrentIndex(dialog.device.findData(alternate['id']));dialog.pending_scan=True;dialog.connect_device();dialog.message.setText('The first backend failed before acquisition. Trying the previously verified alternative once.');return
+        if dialog and self.scan_action in ('scan','capabilities'):
+            from app.services.hardware import fallback_candidates
+            current_id=dialog.device.currentData()
+            self.fallback_tried.add(current_id);self.fallback_errors.append(dialog.device.currentText()+': '+error)
+            started=self.scan_action=='scan' and bool(dialog.folder and (dialog.folder/'acquisition.started').exists())
+            canceled=getattr(dialog,'user_canceled',False) or (self.scan_action=='scan' and bool(dialog.folder and (dialog.folder/'cancel.request').exists()))
+            candidates=fallback_candidates(self.scanners,current_id,self.fallback_tried,self.w.db.get('scanner_fallbacks',{}))
+            if not started and not canceled and candidates and self.fallback_attempts<max(0,len(self.scanners)-1):
+                alternate=candidates[0];self.fallback_attempts+=1;self.fallback_running=True
+                if self.scan_action=='scan':
+                    dialog.retry_request=dict(self.scan_request);dialog.pending_scan=True
+                    if dialog.acquisition_preview:dialog.preview_pending=True
+                self.populate(dialog.device,self.scanners,alternate['id'],'No scanner');dialog.device_changed()
+                dialog.connect_device();dialog.message.setText('Trying '+alternate['name']+' automatically ('+str(self.fallback_attempts+1)+'/'+str(len(self.scanners))+').');return
+            self.fallback_running=False
+            if len(self.fallback_errors)>1:error+='\nTried: '+'; '.join(self.fallback_errors)
+        elif dialog and self.scan_action=='devices' and dialog.pending_scan:
+            if self.scanners:dialog.update_devices();return
+            if self.twain_process.active:self.status.setText('WIA unavailable; waiting for other scanner interfaces.');return
         self.status.setText('Scanner Error / Driver Unavailable: '+error)
         if self.scan_dialog:
             self.scan_dialog.error(error)
@@ -356,6 +375,8 @@ class ScanDialog(QDialog):
             self.error('Busy. Wait for the current scanner operation.'); return
         if not self.device.currentData():
             self.error('Scanner Not Found. Refresh devices after connecting it.'); return
+        if not self.pending_scan and not self.hub.fallback_running:
+            self.hub.fallback_tried=set();self.hub.fallback_attempts=0;self.hub.fallback_errors=[];self.user_canceled=False
         self.hub.scan_action='capabilities'; self.message.setText('Reading scanner capabilities… Preview will acquire a low-resolution bed image when requested.')
         self.scan_progress.show()
         self.scan_button.setEnabled(False)
@@ -375,7 +396,8 @@ class ScanDialog(QDialog):
             for item in self.sources:
                 self.source.addItem(item['name'], item['id'])
             self.source.blockSignals(False)
-            if not self.sources:self.error('The scanner exposes no usable scan source. Reconnect it and refresh capabilities.');return
+            if not self.sources:self.hub.scanner_error('The scanner exposes no usable scan source.');return
+            self.hub.fallback_running=False
             selected=self.source.findData(previous_source or self.hub.w.db.get('scan_source',''))
             if selected>=0:self.source.setCurrentIndex(selected)
             self.source_changed(); self.message.setText(result['status']+'. Click Preview, drag an area on the image, then Scan Now.')
@@ -387,11 +409,15 @@ class ScanDialog(QDialog):
             import time
             self.capability_time=time.monotonic()
             if self.pending_scan:
+                # Preview is a full-bed, minimum-resolution request, rather than
+                # the user's final scan resolution/ROI. Use the alternate bed's
+                # own preview capability and retain the final DPI control.
+                if self.preview_pending:self.retry_request=None
                 if self.retry_request:
                     retry=self.retry_request;self.retry_request=None
                     try:check_scan_request(self.sources[self.source.currentIndex()],retry['dpi'],retry['color'],retry['region'])
-                    except ValueError as error:self.error('Fallback cannot preserve the original request: '+str(error));return
-                    if retry.get('max_pages',1)>1 and not self.sources[self.source.currentIndex()].get('batch'):self.error('Fallback does not support this feeder batch. No second acquisition was started.');return
+                    except ValueError as error:self.retry_request=retry;self.hub.scanner_error('This scanner cannot preserve the requested area/DPI/color: '+str(error));return
+                    if retry.get('max_pages',1)>1 and not self.sources[self.source.currentIndex()].get('batch'):self.retry_request=retry;self.hub.scanner_error('This scanner does not support the requested feeder batch.');return
                     self.feeder_pages.setValue(retry.get('max_pages',1))
                     self.dpi.setCurrentIndex(self.dpi.findData(retry['dpi']));self.color.setCurrentIndex(self.color.findData(retry['color']))
                     for box,value in zip(self.region,retry['region']):box.setValue(value)
@@ -460,6 +486,8 @@ class ScanDialog(QDialog):
         self.scan_button.setEnabled(not active and bool(self.sources))
 
     def cancel(self):
+        self.user_canceled=True
+        self.hub.fallback_running=False
         if self.pending_scan:
             self.pending_scan=False;self.preview_pending=False;self.retry_request=None
             self.request_overrides=None
@@ -472,7 +500,9 @@ class ScanDialog(QDialog):
 
     def verified(self, result):
         self.set_scanning(False); self.completed=result
-        if result.get('driver',{}).get('acquired') and not result.get('driver',{}).get('canceled') and not result.get('driver',{}).get('partial'):self.hub.verified_backends.add(self.hub.scan_request['device'])
+        if result.get('driver',{}).get('acquired') and not result.get('driver',{}).get('canceled') and not result.get('driver',{}).get('partial'):
+            selected=self.hub.scan_request['device'];self.hub.verified_backends.add(selected);self.hub.remember('scanner_id',selected)
+            self.hub.populate(self.hub.scanner,self.hub.scanners,selected,'No scanner');self.hub.fallback_running=False
         self.open_button.setEnabled(True)
         self.message.setText(f'Original retained: {result["width"]} × {result["height"]} pixels, {result["format"]}. '
             'Open in Cropper when ready. A late cancel retains the finished scan too.\n'+result['original'])
@@ -492,13 +522,13 @@ class ScanDialog(QDialog):
         import time
         if preview:self.preview_pending=True
         if self.hub.scan_process.active:
-            if self.hub.scan_action in ('devices','capabilities'):self.pending_scan=True;self.message.setText('Connecting, then scanning once…')
+            if self.hub.scan_action in ('devices','capabilities'):self.user_canceled=False;self.pending_scan=True;self.message.setText('Connecting, then scanning once…')
             else:self.message.setText('A scanner operation is already active.')
             return
         if self.verifier.active:self.message.setText('Verifying the completed transfer.');return
         self.pending_scan=True
         self.cancel_button.setEnabled(True)
-        self.hub.fallback_attempts=0
+        self.hub.fallback_attempts=0;self.hub.fallback_tried=set();self.hub.fallback_errors=[];self.hub.fallback_running=False;self.user_canceled=False
         if self.sources and time.monotonic()-self.capability_time<300:self.pending_scan=False;self.scan()
         elif self.device.currentData():self.connect_device()
         else:self.hub.refresh()
@@ -511,7 +541,8 @@ class ScanDialog(QDialog):
         self.completion_callback=None;self.completion_owner=None;self.folder_root=None;self.request_overrides=None
         self.set_scanning(False)
         suffix=('\nAcquisition folder retained: '+str(self.folder)) if self.folder else ''
-        self.message.setText('Error: '+message+suffix+'\nRefresh/reconnect, then retry explicitly. No fallback scan was started.')
+        self.hub.fallback_running=False
+        self.message.setText('Error: '+message+suffix+'\nNo further automatic scan will run. Check the connection or driver, then retry explicitly.')
     def display_preview(self,image,acquired_region=None,context=None):
         from app.services.cropping import CropRegion
         if context is not None and context!=self.area_context:return

@@ -33,7 +33,7 @@ def main():
     root=Path(args.root).resolve()
     if not root.is_relative_to(ROOT/'.tools') or root.exists():raise ValueError('Use a fresh test directory under .tools.')
     root.mkdir(parents=True);app=root/'Application';started=time.monotonic();checks=[];result={};environment=dict(os.environ)
-    environment['LOCALAPPDATA']=str(root/'UserData');environment['QT_QPA_PLATFORM']='offscreen';environment['QT_QPA_FONTDIR']='C:/Windows/Fonts';environment.pop('STUDIO_VERIFY_MODEL_DIR',None)
+    environment['LOCALAPPDATA']=str(root/'UserData');environment['QT_QPA_PLATFORM']='offscreen';environment['QT_QPA_FONTDIR']='C:/Windows/Fonts';environment['PRINTORA_INSTALLER_TEST']='1';environment.pop('STUDIO_VERIFY_MODEL_DIR',None)
     try:
         installer=compile_installer(args.payload,root/'compiler-output',root)
         flags=['/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-']

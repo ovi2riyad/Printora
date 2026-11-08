@@ -269,7 +269,10 @@ def test_workspace_defaults_roundtrip_and_invalid_optional_values_are_retained(s
 def test_portrait_has_top_preview_quantity_and_advanced_settings(studio):
     w,calls,errors=studio;w.start_workflow('portrait');QApplication.processEvents()
     assert w.quantity.isVisible() and w.top_preview.isVisible() and w.photo_settings_button.isVisible()
-    assert w.profile_picker.isVisible() and w.border.isVisible() and not w.scale.isVisible()
+    assert w.floating_tabs.tabText(w.floating_tabs.currentIndex())=='Image Processing'
+    assert w.denoise.isVisible() and w.shadows.isVisible() and not w.scale.isVisible()
+    w.floating_tabs.setCurrentIndex(1);QApplication.processEvents()
+    assert w.profile_picker.isVisible() and w.border.isVisible()
     w.quantity.setValue(6);assert w.photo.quantity==6
     w.photo_settings.open_settings();QApplication.processEvents();assert w.scale.isVisible()
 

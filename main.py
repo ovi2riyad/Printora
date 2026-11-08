@@ -56,7 +56,7 @@ def main():
     app.setApplicationName('Studio Photo Maker')
     app.setOrganizationName('StudioPhotoMaker')
     window = MainWindow()
-    window.show()
+    window.showMaximized()
     if '--smoke-test' not in sys.argv:
         QTimer.singleShot(300,window.hardware.refresh)
     if '--smoke-test' in sys.argv:

@@ -85,6 +85,24 @@ def safe_fallback(started,alternative_verified,attempts):
     return not started and bool(alternative_verified) and attempts==0
 
 
+def fallback_candidates(devices,current_id,tried,links=None):
+    """Explicit same-device bindings first; then other available interfaces/devices.
+
+    Names are not proof of physical identity, so equal names never merge records.
+    """
+    links=links or {};preferred=links.get(current_id)
+    current=next((d for d in devices if d['id']==current_id),{})
+    physical=current.get('physical_id')
+    import re
+    def family(name):return re.sub(r'[^a-z0-9]','',re.sub(r'\b(wia|twain32|twain64|twain|scanner)\b','',name.lower()))
+    current_family=family(current.get('name',''))
+    def priority(device):
+        same=bool(physical and device.get('physical_id')==physical)
+        similar=bool(current_family and family(device.get('name',''))==current_family)
+        return (0 if device['id']==preferred else 1 if same else 2 if similar else 3,devices.index(device))
+    return sorted((d for d in devices if d['id']!=current_id and d['id'] not in tried),key=priority)
+
+
 class ScannerManager:
     """No implicit retry or cross-backend fallback after a failed acquisition."""
     def __init__(self, backend=None):

@@ -15,11 +15,21 @@ Prepare scanned photos, make individual or joint portraits, copy documents, repr
 
 Created by **Riyad Ahmed Ovi** · **Made using ChatGPT Codex.** [Meet the creator](CREDITS.md).
 
+## A bigger preview, fewer controls
+
+Printora starts **maximized with the Windows title bar**. Portrait, joint and ID-card workspaces adapt to the available screen instead of requiring page scrolling; narrow layouts use labeled tooltips on compact icons.
+
+- **Cropper:** instructions/customer assignment share the title row. The narrow strip shows crop thumbnails, with thumbnail size in its three-line menu and rotate/delete icons below. The blue **Crop** button saves every region and opens **Photo Library**. Removed photos can be recovered from **Photo Library → Library options → Removed photos**.
+- **Portrait / Joint:** Choose photo, Add photos to session, Create order, Preview PDF and the settings icon share one row. Quantity has sky-blue/white/blue background swatches, a more-colors button and a reversible **Auto soften** toggle. Layer names stay short; source paths do not fill a separate row.
+- **Image Processing** opens by default in a narrow translucent floating panel. It offers noise reduction, brightness, contrast, color, shadows, warmth, sharpness and skin softness. **Size** has profile/framing/border controls; less-used tools remain in Settings. The panel collapses to **Edit** or changes between small/large modes without reducing the canvas width. **Fit** floats inside the preview; keyboard zoom/pan shortcuts still work.
+- **Natural softening** is limited to detected faces/skin, protects eyes/brows/nose/mouth, retains alpha and leaves original files unchanged. With no detected face it leaves the image unchanged. Toggling it off restores the unsoftened rendering; the other adjustments remain. Processing settings persist in jobs, sessions and order snapshots and use the same renderer for preview, PNG/JPEG and PDF.
+- **Scanner fallback:** before acquisition, Printora tries an explicitly linked/similarly named interface first, then remaining detected scanners once each. Matching names are a priority hint, not proof of device identity. It preserves requested DPI/color/area/batch settings and skips incompatible alternatives. It stops after acquisition begins, cancellation, or exhaustion; partial scans are retained. The last successfully acquired scanner is remembered. Physical driver behavior still requires studio-side testing.
+
 ## Install
 
 Download **Printora Setup** from [GitHub Releases](https://github.com/ovi2riyad/Printora/releases/latest). Clients do not need Python.
 
-1. Double-click `Printora-3.3.3-Setup.exe` and approve the Windows administrator prompt.
+1. Double-click `Printora-3.4.0-Setup.exe` and approve the Windows administrator prompt.
 2. A fresh installation defaults to **`C:\Printora`**. Setup creates Desktop/Start menu shortcuts and an Installed Apps entry.
 3. Open Printora. Select installed scanner/printer drivers as needed.
 
@@ -90,7 +100,7 @@ python -m venv .venv
 Alternatively, `setup.bat` creates the environment and `run.bat` starts the app. Model installation is a separate explicit download. For a Windows installer, run **`build.bat`**:
 
 ```text
-dist/installers/Printora-3.3.3-Setup.exe              Client installer
+dist/installers/Printora-3.4.0-Setup.exe              Client installer
 dist/candidate/StudioPhotoMaker/                    Complete portable payload
 ```
 

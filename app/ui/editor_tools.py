@@ -84,4 +84,5 @@ class EditorTools(QWidget):
         if layer and not layer.locked:
             self.w.checkpoint();layer.mask_strokes=[];layer.erosion=0;layer.feather=0;layer.defringe=0
             for key in ('brightness','contrast','saturation','sharpness'):setattr(layer,key,1.)
+            for key in ('denoise','shadows','temperature','skin_soften'):setattr(layer,key,0.)
             self.w.sync_controls()

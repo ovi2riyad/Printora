@@ -41,6 +41,7 @@ class WorkspaceScroll(QScrollArea):
     def fit_workspace(self):
         self.pending=False;stack=self.widget();current=stack.currentWidget()
         if current:
+            if hasattr(current,'fit_width'):current.fit_width(self.viewport().width())
             minimum=current.minimumSizeHint().expandedTo(QSize(0,0))
             if stack.minimumSize()!=minimum:stack.setMinimumSize(minimum)
             size=self.viewport().size().expandedTo(minimum)
@@ -119,7 +120,11 @@ class StudioShell:
     def toggle(self):
         modes=['large','small','icons'];self.navigation_panel.set_mode(modes[(modes.index(self.navigation_panel.mode)+1)%3])
     def resize(self,width):
-        self.device_status.setVisible(width>=1200);self.workspace.setVisible(width>=850);self.logo_icon.setVisible(width>=800);self.action_toolbar.setToolButtonStyle(Qt.ToolButtonIconOnly if width<1100 else Qt.ToolButtonTextBesideIcon);self.render_navigation();self.reflow_dashboard(width)
+        if width<900 and self.navigation_panel.mode!='icons':
+            self._wide_navigation_mode=self.navigation_panel.mode;self.navigation_panel.mode='icons';self.navigation_panel.apply_mode();self.navigation_panel.resize_panel(52)
+        elif width>=900 and hasattr(self,'_wide_navigation_mode'):
+            self.navigation_panel.mode=self._wide_navigation_mode;del self._wide_navigation_mode;self.navigation_panel.apply_mode();self.navigation_panel.restore_width()
+        self.device_status.setVisible(width>=1200);self.workspace.hide();self.logo_icon.setVisible(width>=800);self.action_toolbar.setToolButtonStyle(Qt.ToolButtonIconOnly if width<1100 else Qt.ToolButtonTextBesideIcon);self.render_navigation();self.reflow_dashboard(width)
     def render_navigation(self):
         self.expanded=self.navigation_panel.mode!='icons'
         for i,(title,_,_) in enumerate(self.routes):
@@ -134,7 +139,8 @@ class StudioShell:
         current=self.w.stack.currentWidget();index=next((i for i,(_,_,page) in enumerate(self.routes) if page is current),0)
         if current is self.w.stack.widget(1) and self.w.mode=='joint':index=5
         if self.w.stack.currentIndex()==2:index=5 if self.w.mode=='joint' else 4
-        self.navigation.setCurrentRow(index);self.workspace.setText(self.routes[index][0])
+        if current is self.w.cropper:index=-1
+        self.navigation.setCurrentRow(index);self.workspace.setText('Cropper' if index<0 else self.routes[index][0])
         document=current in (self.copy,self.nid);editor=current in (self.w.stack.widget(1),self.w.stack.widget(2));multi=current is self.w.studio.multi
         for key in ('pdf','image','print','save'):self.toolbar_actions[key].setEnabled(document or editor or multi or (key=='print' and current is self.w.studio.order_page))
         self.toolbar_actions['image'].setEnabled(document or editor)

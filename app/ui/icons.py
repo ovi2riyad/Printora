@@ -5,6 +5,14 @@ from PySide6.QtGui import QIcon,QPixmap,QPainter
 from PySide6.QtSvg import QSvgRenderer
 
 PATHS={
+ 'fit':'<path d="M3 9V3h6m6 0h6v6M3 15v6h6m6 0h6v-6M7 7h10v10H7z"/>',
+ 'rotate_left':'<path d="M3 10V3m0 0h7M3 3l5 5a8 8 0 1 1-2 9"/>',
+ 'rotate_right':'<path d="M21 10V3m0 0h-7m7-7-5 5a8 8 0 1 0 2 9"/>',
+ 'delete':'<path d="M3 6h18M9 6V3h6v3M5 6l1 16h12l1-16M10 10v8m4-8v8"/>',
+ 'move':'<path d="M12 2v20M2 12h20M8 6l4-4 4 4M8 18l4 4 4-4M6 8l-4 4 4 4m12-8 4 4-4 4"/>',
+ 'erase':'<path d="m4 18-2-2L14 4l8 8-12 12H8zM9 9l8 8M8 22h14"/>',
+ 'restore':'<path d="M4 8V2m0 0h6M4 2l4 4a9 9 0 1 1-4 12M12 9v8m-4-4h8"/>',
+ 'deselect':'<path d="M2 2h20v20H2zM6 6l12 12M6 18 18 6"/>',
  'import':'<path d="M12 2v13m-5-5 5 5 5-5M3 15v7h18v-7"/>',
  'export':'<path d="M12 17V3m-5 5 5-5 5 5M3 15v7h18v-7"/>',
  'save':'<path d="M3 2h15l3 3v17H3zM7 2v7h10V2M7 22v-9h10v9"/>',

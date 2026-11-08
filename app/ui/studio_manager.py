@@ -38,7 +38,17 @@ class LibraryPage(QWidget):
         for label,fn in [('Portrait',lambda:self.use('portrait')),('Joint',lambda:self.use('joint')),('Assign customer',self.assign),('Clear customer filter',self.clear_filter),('Bulk rename',self.rename),('Individual',lambda:self.classify('Individual')),('Joint type',lambda:self.classify('Joint')),('Remove',self.remove)]:
             b=QPushButton(label);b.clicked.connect(fn);row.addWidget(b)
         outer.addLayout(row)
+        from PySide6.QtWidgets import QToolButton,QMenu
+        from app.ui.icons import icon
+        more=QToolButton();more.setIcon(icon('menu'));more.setToolTip('Library options');more.setAccessibleName('Library options');more.setPopupMode(QToolButton.InstantPopup);menu=QMenu(more);menu.addAction('Removed photos…',self.restore_removed);more.setMenu(menu);row.addWidget(more)
         unlink=QPushButton('Unlink selected photos from filtered customer');unlink.clicked.connect(self.unlink);outer.addWidget(unlink)
+    def restore_removed(self):
+        dialog=QDialog(self);dialog.setWindowTitle('Recover removed photos');layout=QVBoxLayout(dialog)
+        gallery=PhotoLibrary(self.manager.w.tray,removed=True);layout.addWidget(gallery)
+        buttons=QDialogButtonBox(QDialogButtonBox.Close);restore=buttons.addButton('Restore selected',QDialogButtonBox.ActionRole)
+        def recover():
+            self.manager.w.tray.restore_items(set(gallery.list.selected_ids));gallery.list.clear_selection();gallery.refresh();self.gallery.refresh()
+        restore.clicked.connect(recover);buttons.rejected.connect(dialog.reject);layout.addWidget(buttons);dialog.resize(780,600);dialog.exec()
     def lookup(self,text):
         if self.customer_id:
             ids=self.manager.customers.photo_ids(self.customer_id)
@@ -70,7 +80,7 @@ class LibraryPage(QWidget):
     def classify(self,kind):self.manager.w.tray.set_kind(self.gallery.list.selected_ids,kind);self.gallery.refresh()
     def remove(self):
         ids=set(self.gallery.list.selected_ids)
-        if ids and QMessageBox.question(self,'Remove library photos',f'Hide {len(ids)} selected photos? Saved jobs retain their files; recovery is available in Cropper.',QMessageBox.Yes|QMessageBox.Cancel)==QMessageBox.Yes:
+        if ids and QMessageBox.question(self,'Remove library photos',f'Hide {len(ids)} selected photos? Saved jobs retain their files; recover them from Library options → Removed photos.',QMessageBox.Yes|QMessageBox.Cancel)==QMessageBox.Yes:
             self.manager.w.tray.remove(ids);self.gallery.list.clear_selection();self.gallery.refresh()
     def preview(self,id):
         item=self.gallery.rows[id]
@@ -87,26 +97,33 @@ class StudioManager:
         self.orders=OrderStore(w.db);self.order_page=OrdersPage(self);w.stack.addWidget(self.order_page)
         from app.ui.multi_photo_print import MultiPhotoPrint
         self.multi=MultiPhotoPrint(self);w.stack.addWidget(self.multi)
-        bar=QHBoxLayout();review=QPushButton('Add reviewed photo to session');review.clicked.connect(self.multi.accept_reviewed);bar.addWidget(review);w.stack.widget(1).layout().insertLayout(2,bar)
+        review=QPushButton('Add photos to session');review.setToolTip('Save the reviewed composition and add it to Multi Photo Print.');review.clicked.connect(self.multi.accept_reviewed);w.editor_actions.insertWidget(w.editor_actions.indexOf(w.top_preview),review)
         from app.ui.editor_tools import EditorTools
         w.editor_tools=EditorTools(w);selection_scroll=QScrollArea();selection_scroll.setWidgetResizable(True);selection_scroll.setWidget(w.editor_tools);w.editor_tabs.addTab(selection_scroll,'Select / Mask')
-        order=QPushButton('Create order');order.clicked.connect(lambda:self.order_page.create(w.job) if w.photo and w.photo.layers else w.notify('Prepare a composition first.'));bar.addWidget(order)
+        order=QPushButton('Create order');order.clicked.connect(lambda:self.order_page.create(w.job) if w.photo and w.photo.layers else w.notify('Prepare a composition first.'));w.editor_actions.insertWidget(w.editor_actions.indexOf(w.top_preview),order)
+        w.session_actions=[(review,'Add photos to session','multi'),(order,'Create order','orders')]
         self.customer_page=CustomersPage(self.customers);self.library=LibraryPage(self)
         self.customer_page.changed.connect(self.refresh);self.customer_page.open_photos.connect(self.customer_photos);self.customer_page.open_job.connect(self.open_job)
         self.customer_page.open_orders.connect(self.customer_orders)
         w.stack.addWidget(self.customer_page);w.stack.addWidget(self.library)
-        row=QHBoxLayout();self.import_customer=QLabel('Import customer: unassigned (optional)');row.addWidget(self.import_customer,1)
-        choose=QPushButton('Choose / create customer');choose.clicked.connect(self.choose_import_customer);row.addWidget(choose)
-        clear=QPushButton('Unassigned');clear.clicked.connect(self.clear_import_customer);row.addWidget(clear);w.cropper.layout().insertLayout(2,row)
+        from PySide6.QtWidgets import QToolButton,QMenu,QSizePolicy
+        from app.ui.icons import icon
+        self.import_customer=QLabel('Customer: unassigned');self.import_customer.setMinimumWidth(140);self.import_customer.setMaximumWidth(200);self.import_customer.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Preferred);w.cropper.header.insertWidget(w.cropper.header.count()-1,self.import_customer)
+        choose=QToolButton();choose.setIcon(icon('portrait'));choose.setToolTip('Assign imported photos to a customer');choose.setAccessibleName('Import customer');choose.setPopupMode(QToolButton.InstantPopup);menu=QMenu(choose);menu.addAction('Choose / create customer',self.choose_import_customer);menu.addAction('Unassigned',self.clear_import_customer);choose.setMenu(menu);w.cropper.header.insertWidget(w.cropper.header.count()-1,choose)
         self.import_customer_id=None
         w.cropper.on_sources_imported=lambda paths:self.customers.assign_sources(self.import_customer_id,paths,w.tray)
         w.cropper.on_crops_saved=lambda:self.customers.reconcile(w.tray)
+        w.cropper.on_crop_complete=self.show_cropped_library
         from app.ui.studio_tools import StudioTools
         self.tools=StudioTools(self);w.stack.addWidget(self.tools)
         from app.ui.hardware import HardwareHub
         w.hardware=HardwareHub(w)
         self.dashboard=self.make_dashboard();old=w.stack.widget(0);w.stack.removeWidget(old);w.stack.insertWidget(0,self.dashboard);old.deleteLater();w.stack.setCurrentIndex(0)
-    def clear_import_customer(self):self.import_customer_id=None;self.import_customer.setText('Import customer: unassigned (optional)')
+    def show_cropped_library(self):
+        gallery=self.library.gallery;self.library.customer_id=None
+        gallery.search.clear();gallery.kind.setCurrentIndex(0);gallery.date.setCurrentIndex(0);gallery.list.clear_selection();gallery.reset_page()
+        self.show(self.library)
+    def clear_import_customer(self):self.import_customer_id=None;self.import_customer.setText('Customer: unassigned')
     def rebind(self):
         from app.services.orders import OrderStore
         from app.services.print_sessions import PrintSessionStore

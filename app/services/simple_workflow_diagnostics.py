@@ -53,7 +53,7 @@ def verify_simple_workflows(destination):
         dialog.result(dict(status='Simulated submission only'));dialog.close();w.hardware.printing=False
     ok=False
     try:
-        w=StudioWindow();w.show();settle();w.resize(1366,768);app.processEvents()
+        w=StudioWindow();w.showMaximized();settle();app.processEvents()
         h=w.hardware;d=h.scan_dialog
         h.scanners=[dict(id='QA-SCANNER',name='QA scanner — no hardware acquisition',status='Simulated',backend='wia')]
         h.printers=[dict(id='QA-PRINTER',name='QA printer — no hardware output',status='Queue available; physical readiness unverified',default=True)]
@@ -112,7 +112,18 @@ def verify_simple_workflows(destination):
         for kind in ('portrait','joint'):
             w.start_workflow(kind);w.photo.layers=[Layer(str(cards[0]))];w.sync_controls();w.quantity.setValue(6);w.timer.stop();w.render_preview();settle()
             check(kind+' has top preview, quantity and Settings',w.top_preview.isVisible() and w.quantity.isVisible() and w.photo_settings_button.isVisible() and w.photo.quantity==6 and not w.scale.isVisible())
+            check(kind+' has a floating processing panel and no page scrolling',w.floating_tabs.currentIndex()==0 and w.denoise.isVisible() and w.editor_panel.parentWidget() is w.editor_splitter and w.shell.workspace_scroll.verticalScrollBar().maximum()==0)
+            w.denoise.setValue(.2);w.shadows.setValue(.15);w.auto_soften.click();settle()
+            check(kind+' softener is reversible and preserves the other processing settings',w.photo.layers[0].skin_soften>0)
+            w.auto_soften.click();settle()
+            check(kind+' retains noise/shadow processing after disabling softening',w.photo.layers[0].skin_soften==0 and w.photo.layers[0].denoise==.2 and w.photo.layers[0].shadows==.15)
             shot(kind+'-main');w.photo_settings.open_settings();shot(kind+'-settings',w.photo_settings);w.photo_settings.hide();w.dirty=False
+        from app.services.cropping import CropRegion
+        w.open_cropper(load_source=False);crop=w.cropper;crop.current_path=w.tray.import_source(cards[0]);crop.current_image=Image.open(crop.current_path).convert('RGBA');width,height=crop.current_image.size
+        crop.regions=[CropRegion([(0,0),(width//2-1,0),(width//2-1,height-1),(0,height-1)]),CropRegion([(width//2,0),(width-1,0),(width-1,height-1),(width//2,height-1)])];crop.refresh_regions();settle();count=len(w.tray.items)
+        check('Cropper shows icon thumbnails and fits the page',crop.region_list.count()==2 and not crop.region_list.item(0).text() and w.shell.workspace_scroll.verticalScrollBar().maximum()==0)
+        QTest.mouseClick(crop.crop_button,Qt.LeftButton);settle()
+        check('Blue Crop saves all regions and opens Photo Library',len(w.tray.items)==count+2 and w.stack.currentWidget() is w.studio.library)
         w.shell.open_settings();settle()
         from app.credits import AUTHOR,WEBSITE,EMAIL,DEVELOPMENT_CREDIT
         credits=w.shell.preferences.findChild(QLabel,'appCredits')

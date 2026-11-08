@@ -3,7 +3,7 @@
   #error Payload must point to the complete validated onedir application.
 #endif
 #ifndef ProductVersion
-  #define ProductVersion "3.3.3"
+  #define ProductVersion "3.4.0"
 #endif
 #ifndef ReleaseOutput
   #define ReleaseOutput "..\dist\installers"
@@ -26,7 +26,11 @@ SolidCompression=yes
 WizardStyle=modern
 CloseApplications=yes
 RestartApplications=no
+#ifdef TestRoot
+AppMutex=Local\Printora.Desktop.InstallerTest.Running
+#else
 AppMutex=Local\Printora.Desktop.Running
+#endif
 OutputDir={#ReleaseOutput}
 #ifdef TestRoot
 AppId={{4F077504-7244-4BEB-B290-FE8758932B47}-InstallerTest
@@ -48,8 +52,8 @@ Source: "{#Payload}\*"; DestDir: "{app}"; Excludes: "StudioPhotoMaker.exe"; Flag
 
 [Icons]
 #ifdef TestRoot
-Name: "{#TestRoot}\Desktop\Printora"; Filename: "{app}\Printora.exe"; WorkingDir: "{app}"; AppUserModelID: "Printora.Desktop"
-Name: "{#TestRoot}\StartMenu\Printora\Printora"; Filename: "{app}\Printora.exe"; WorkingDir: "{app}"; AppUserModelID: "Printora.Desktop"
+Name: "{#TestRoot}\Desktop\Printora"; Filename: "{app}\Printora.exe"; WorkingDir: "{app}"; AppUserModelID: "Printora.Desktop.InstallerTest"
+Name: "{#TestRoot}\StartMenu\Printora\Printora"; Filename: "{app}\Printora.exe"; WorkingDir: "{app}"; AppUserModelID: "Printora.Desktop.InstallerTest"
 #else
 Name: "{commondesktop}\Printora"; Filename: "{app}\Printora.exe"; WorkingDir: "{app}"; AppUserModelID: "Printora.Desktop"
 Name: "{commonprograms}\Printora\Printora"; Filename: "{app}\Printora.exe"; WorkingDir: "{app}"; AppUserModelID: "Printora.Desktop"

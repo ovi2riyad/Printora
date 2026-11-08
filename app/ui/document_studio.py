@@ -5,7 +5,7 @@ from pathlib import Path
 from PIL import Image
 from PySide6.QtCore import Qt,QTimer
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QLabel,QPushButton,QComboBox,
-    QSpinBox,QDoubleSpinBox,QCheckBox,QListWidget,QScrollArea,QSplitter,QFileDialog,QMessageBox,QInputDialog)
+    QSpinBox,QDoubleSpinBox,QCheckBox,QListWidget,QScrollArea,QSplitter,QFileDialog,QMessageBox,QInputDialog,QSizePolicy)
 from app.core.database import data_root
 from app.services.documents import DocumentSession,DocumentPage,PAPERS,detect_card,propose_card
 from app.services.cropping import CropRegion
@@ -21,8 +21,9 @@ class DocumentStudio(QWidget):
         super().__init__();self.w=w;self.kind=kind;self.session=DocumentSession(data_root(),kind);self.dirty=False;self.loading=False;self.reviewed=set();self.current_size=None;self.scan_generation=0
         self.action_buttons={};self.simple_inflight=False;self.set_active=False;self.copy_batch=[];self.simple_pending=None;self.simple_mode=None;self.pending_nid_preview=False;self.preview_dialog=None
         self.pending_delivery=None;self.delivery_timer=QTimer(self);self.delivery_timer.setSingleShot(True);self.delivery_timer.timeout.connect(self.deliver_scan)
-        outer=QVBoxLayout(self);title=QLabel('ID Card Print' if kind=='nid' else 'Quick Copy');title.setObjectName('title');outer.addWidget(title)
-        desc=QLabel('Scan or import Front and Back → Preview PDF → adjust the corners → Print.' if kind=='nid' else 'Copy a page in color or black & white. Print Set scans several pages, then prints when you finish.');desc.setWordWrap(True);outer.addWidget(desc)
+        outer=QVBoxLayout(self);outer.setContentsMargins(0,0,0,0);outer.setSpacing(4);header=QHBoxLayout();outer.addLayout(header)
+        title=QLabel('ID Card Print' if kind=='nid' else 'Quick Copy');title.setObjectName('section');header.addWidget(title)
+        desc=QLabel('Scan or import Front and Back → Preview PDF → adjust the corners → Print.' if kind=='nid' else 'Color or black & white. Use Print Set for multiple pages.');desc.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Preferred);desc.setToolTip(desc.text());header.addWidget(desc,1)
         actions=QHBoxLayout();outer.addLayout(actions)
         for text,fn in ([('Scan Front',lambda:self.scan('Front')),('Scan Back',lambda:self.scan('Back'))] if kind=='nid' else [('Copy / Scan page',lambda:self.scan('Page'))]):self.button(actions,text,fn)
         self.button(actions,'Import files',self.import_files);self.button(actions,'Save session',self.save_session);self.button(actions,'Open session',self.open_session);self.button(actions,'Clear session',self.clear)
@@ -83,10 +84,12 @@ class DocumentStudio(QWidget):
         self.controls_panel=AdaptivePanel(basic,w.db,kind+'_controls','Copy controls',default_width=290,minimum_width=240);split.addWidget(self.controls_panel)
         if kind=='nid':self.controls_panel.hide()
         center=QWidget();cl=QVBoxLayout(center);bar=QHBoxLayout();cl.addLayout(bar)
-        self.canvas=CropCanvas();self.canvas.setMinimumSize(300,240)
+        self.canvas=CropCanvas();self.canvas.setMinimumSize(160,60)
         for label,fn in [('Fit',lambda:self.canvas.fitInView(self.canvas.sceneRect(),Qt.KeepAspectRatio)),('100%',self.canvas.resetTransform),('＋',lambda:self.canvas.scale(1.2,1.2)),('−',lambda:self.canvas.scale(1/1.2,1/1.2)),('Pan',self.toggle_pan)]:self.button(bar,label,fn)
-        cl.addWidget(self.canvas,1);self.measure=QLabel('Import or scan a page. Draw a crop on the preview; drag corners/edges to adjust.');self.measure.setWordWrap(True);cl.addWidget(self.measure);split.addWidget(center)
-        pages=QWidget();pl=QVBoxLayout(pages);pl.addWidget(QLabel('Page order'));self.list=QListWidget();self.list.setMinimumWidth(95);pl.addWidget(self.list,1)
+        self.advanced_settings.add_layout(bar)
+        from app.ui.preview_workspace import FloatingFit
+        self.canvas_fit=FloatingFit(self.canvas);cl.setContentsMargins(0,0,0,0);cl.addWidget(self.canvas,1);self.measure=QLabel('Import or scan a page. Draw a crop on the preview; drag corners/edges to adjust.');self.measure.hide();split.addWidget(center)
+        pages=QWidget();pl=QVBoxLayout(pages);self.list=QListWidget();self.list.setMinimumWidth(95);self.list.setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Ignored);pl.addWidget(self.list,1)
         for label,fn in [('Move up',lambda:self.move(-1)),('Move down',lambda:self.move(1)),('Remove',self.remove)]:self.button(pl,label,fn)
         self.pages_panel=AdaptivePanel(pages,w.db,kind+'_pages','Pages',default_width=180,minimum_width=140);split.addWidget(self.pages_panel);split.setStretchFactor(1,1);self.controls_panel.attach(split);self.pages_panel.attach(split)
         self.canvas.changed.connect(self.crop_changed);self.canvas.drawn.connect(self.drawn);self.list.currentRowChanged.connect(self.show_page)
@@ -112,10 +115,12 @@ class DocumentStudio(QWidget):
             self.print_set_button=self.button(actions,'Print Set',lambda:self.start_copy(self.color.currentText(),True))
         else:self.preview_pdf_button=self.button(actions,'Preview PDF',self.preview_nid)
         self.settings_button=self.button(actions,'Settings',self.advanced_settings.open_settings)
+        from app.ui.icons import icon
+        self.settings_button.setText('');self.settings_button.setIcon(icon('settings'));self.settings_button.setToolTip('Workspace settings');self.settings_button.setAccessibleName('Workspace settings');self.settings_button.setFixedWidth(34)
         self.save_defaults_button=QPushButton('Save as workspace defaults');self.save_defaults_button.clicked.connect(self.save_defaults);self.advanced_settings.add_widget(self.save_defaults_button)
         self.set_actions=QWidget();set_row=QHBoxLayout(self.set_actions);self.set_status=QLabel();set_row.addWidget(self.set_status,1)
         self.add_page_button=QPushButton('Add page');self.add_page_button.clicked.connect(self.add_set_page);set_row.addWidget(self.add_page_button)
-        self.finish_set_button=QPushButton('Finish & Print');self.finish_set_button.clicked.connect(self.finish_set);set_row.addWidget(self.finish_set_button);outer.insertWidget(3,self.set_actions);self.set_actions.hide()
+        self.finish_set_button=QPushButton('Finish & Print');self.finish_set_button.clicked.connect(self.finish_set);set_row.addWidget(self.finish_set_button);outer.insertWidget(2,self.set_actions);self.set_actions.hide()
         defaults=w.db.get('workflow_defaults',{}).get(kind,{})
         if defaults:self.load_settings(defaults)
         self.update_settings_summary()

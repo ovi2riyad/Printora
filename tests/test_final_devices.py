@@ -53,7 +53,7 @@ def test_auto_after_scan_uses_only_newly_acquired_pages(window,tmp_path,monkeypa
     assert len(submitted)==1 and submitted[0][1] and len(submitted[0][0].photos)==2 and len(copy.session.pages)==3
     assert all('new-' in p.layers[0].source or 'processed-' in p.layers[0].source for p in submitted[0][0].photos)
 
-@pytest.mark.parametrize('started,verified,attempts,expected',[(False,True,0,1),(True,True,0,0),(False,False,0,0),(False,True,1,0)])
+@pytest.mark.parametrize('started,verified,attempts,expected',[(False,True,0,1),(True,True,0,0),(False,False,0,1),(False,True,1,0)])
 def test_actual_hub_fallback_gate(window,tmp_path,monkeypatch,started,verified,attempts,expected):
     hub=window.hardware;dialog=hub.scan_dialog
     hub.scanners=[dict(id='primary',name='Primary',backend='wia'),dict(id='twain32:alternate',name='Alternate',backend='twain32')];dialog.update_devices()

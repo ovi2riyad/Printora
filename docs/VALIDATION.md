@@ -1,6 +1,6 @@
 # Validation and release limits
 
-This file records executed checks and separates software verification from physical studio acceptance. Current version: **3.3.3**. Live hosted results are available in [Windows tests](https://github.com/ovi2riyad/Printora/actions/workflows/tests.yml).
+This file records executed checks and separates software verification from physical studio acceptance. Current version: **3.4.0**. Live hosted results are available in [Windows tests](https://github.com/ovi2riyad/Printora/actions/workflows/tests.yml).
 
 ## 3.3.3 credits, licensing and naming
 
@@ -13,6 +13,16 @@ During this update the complete local suite passed **535 tests, 13 optional-fixt
 After the label rename, the native About/document workflow suite passed **34 tests / 1 private-fixture skip** (46.35 s). Four direct native probes checked the dashboard/navigation, workspace/settings/job titles, preview title, and an actual offline MIT-license modal. Light/Dark creator cards and the license dialog were visually inspected.
 
 The final bundled payload passed **32 workflow checks at 100% and 200% Windows scaling** (9.75 / 8.75 s), using a different cwd, Python-free PATH, fresh app data and no external model override. Its license inventory contains 57 notice/metadata files. The installer verifier now additionally checks the corrected publisher website and installed license/creator files, for seven acceptance checks in total. The release notes identify the published commit's full Windows CI and final installer acceptance; physical hardware tests remain deferred.
+
+## 3.4 preview refinement
+
+Native checks covered all four main workspaces at 100% and 200% Windows scaling with zero outer vertical scrolling. At 1366 × 768 / 100%, the portrait canvas viewport was approximately 1133 × 456 logical pixels; this is a measured layout result for the test desktop, not a promise for every display. At high scaling, compact icons and internal control scrolling keep page geometry within the viewport.
+
+The new tests exercise face-local reversible smoothing with protected features/alpha, original byte preservation, stored processing fields and invalid-value rejection, shared export pixels, legacy zero defaults, overlay collapse, action-row alignment, background controls and undo, Crop-to-Library navigation, removed-photo recovery, scanner ranking/failed-interface chains/request preservation and no retry after transfer/cancel. Synthetic face boxes are injected for deterministic skin-mask tests; that does not certify real-world face detection or photographic retouching quality.
+
+The expanded complete local suite passed **552 tests / 13 optional-fixture skips / no failures or errors**, with two existing Pillow warnings (296.14 s). The dedicated refinement suite passed **17 native tests**, including the final preview-fallback and layer-label checks. Earlier intermediate expectations were corrected to match the requested placement/automatic fallback behavior; regressions remain present.
+
+The final frozen payload passed **40 workflow checks at each of 100% / 200% Windows scaling**, **25 document checks**, **31 stabilization checks**, and **8 synthetic crop-to-maker/bundled CPU-model checks**. A normal EXE startup was independently observed as maximized through Win32 `IsZoomed`. Runs used isolated data, a different cwd, a Python-free PATH and no external model override. The installer acceptance procedure verifies seven install/upgrade/uninstall, registration/shortcut, attribution/website, data-retention and installed-workflow checks; the release record supplies its executed result and the final hosted Windows run. Previous 3.3 results below remain historical. Physical scanner/printer and clean-machine acceptance remain separate.
 
 ## Coverage
 
