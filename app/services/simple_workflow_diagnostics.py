@@ -1,5 +1,6 @@
 """Opt-in source/frozen UI acceptance. All scanner/printer processes are inert."""
 import hashlib
+import copy
 import json
 import os
 import time
@@ -117,11 +118,20 @@ def verify_simple_workflows(destination):
             check(kind+' softener is reversible and preserves the other processing settings',w.photo.layers[0].skin_soften>0)
             w.auto_soften.click();settle()
             check(kind+' retains noise/shadow processing after disabling softening',w.photo.layers[0].skin_soften==0 and w.photo.layers[0].denoise==.2 and w.photo.layers[0].shadows==.15)
+            w.canvas.fit_preview();settle();bounds=w.canvas.mapFromScene(w.canvas.photo_rect).boundingRect()
+            check(kind+' fits the actual photo tightly beside floating controls',bounds.height()>=w.canvas.viewport().height()-24 and bounds.right()<w.editor_panel.mapTo(w.canvas.viewport(),QPoint()).x()+8)
+            snapshot=w.edit_snapshot();w.auto_fix.click();settle();first=copy.deepcopy(w.photo.layers[0]);w.auto_fix.click();settle()
+            check(kind+' Auto Fix is repeatable and includes separate color-noise controls',w.photo.layers[0]==first and w.color_denoise.isVisible())
+            w.undo_edit();settle();w.undo_edit();settle()
+            check(kind+' Auto Fix undoes to the exact prior document',w.edit_snapshot()==snapshot)
             shot(kind+'-main');w.photo_settings.open_settings();shot(kind+'-settings',w.photo_settings);w.photo_settings.hide();w.dirty=False
         from app.services.cropping import CropRegion
         w.open_cropper(load_source=False);crop=w.cropper;crop.current_path=w.tray.import_source(cards[0]);crop.current_image=Image.open(crop.current_path).convert('RGBA');width,height=crop.current_image.size
         crop.regions=[CropRegion([(0,0),(width//2-1,0),(width//2-1,height-1),(0,height-1)]),CropRegion([(width//2,0),(width-1,0),(width-1,height-1),(width//2,height-1)])];crop.refresh_regions();settle();count=len(w.tray.items)
         check('Cropper shows icon thumbnails and fits the page',crop.region_list.count()==2 and not crop.region_list.item(0).text() and w.shell.workspace_scroll.verticalScrollBar().maximum()==0)
+        w.studio.import_customer.setText('Customer: A long customer name must never cover the Crop button');settle()
+        header=[crop.header.itemAt(i).widget() for i in range(crop.header.count())];header=[item for item in header if item and item.isVisible()]
+        check('Crop header remains inside the page without overlapping actions',all(crop.rect().contains(item.geometry()) for item in header) and all(not item.geometry().intersects(second.geometry()) for i,item in enumerate(header) for second in header[i+1:]))
         QTest.mouseClick(crop.crop_button,Qt.LeftButton);settle()
         check('Blue Crop saves all regions and opens Photo Library',len(w.tray.items)==count+2 and w.stack.currentWidget() is w.studio.library)
         w.shell.open_settings();settle()

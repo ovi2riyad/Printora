@@ -2,7 +2,7 @@
 import math
 import copy
 from PySide6.QtCore import Qt,Signal,QRectF,QPointF
-from PySide6.QtGui import QColor,QPen,QPainterPath
+from PySide6.QtGui import QColor,QPen,QPainterPath,QTransform
 from app.services.selections import TOOLS,combine,selection_mask
 from PySide6.QtWidgets import QGraphicsView,QGraphicsItem,QGraphicsPixmapItem,QGraphicsRectItem,QGraphicsEllipseItem
 from app.ui.canvas import EditorCanvas,pixmap
@@ -63,6 +63,25 @@ class TransformCanvas(EditorCanvas):
         super().__init__();self.photo_width=1;self.photo_height=1;self.layers=[];self.active=0;self.tool='move';self.brush_size=24;self.stroke=None;self.hover=None;self.panning=False;self.ready=False;self.setMouseTracking(True);self.setFocusPolicy(Qt.StrongFocus)
         self.selection=None;self.selection_mode='new';self.gesture=None;self.selection_path=QPainterPath();self.selection_owner=None
         self.setMinimumSize(260,240)
+        self.preview_obstruction=0;self.preview_fitted=True
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff);self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    def fit_preview(self):
+        """Fit the actual photo, using the height and space beside floating controls."""
+        self.preview_fitted=True
+        bounds=getattr(self,'photo_rect',self.sceneRect())
+        if bounds.width()<=0 or bounds.height()<=0:return
+        available=max(40,self.viewport().width()-self.preview_obstruction)
+        scale=min(max(20,available-20)/bounds.width(),max(20,self.viewport().height()-20)/bounds.height())
+        self.setTransform(QTransform.fromScale(scale,scale))
+        center=bounds.center();center.setX(center.x()+self.preview_obstruction/(2*scale));self.centerOn(center)
+    def set_preview_obstruction(self,width):
+        if width!=self.preview_obstruction:
+            self.preview_obstruction=width
+            if self.preview_fitted:self.fit_preview()
+    def resizeEvent(self,event):
+        # The base canvas fits its entire scene, including off-photo editing space.
+        QGraphicsView.resizeEvent(self,event)
+        if self.preview_fitted:self.fit_preview()
     def display(self,image):
         self.layers=[];self.ready=False;self.selection=None;self.gesture=None;self.selection_owner=None;self.photo_rect=QRectF(0,0,image.width,image.height);super().display(image)
     def set_layers(self,photo,images,index=0):
@@ -71,12 +90,12 @@ class TransformCanvas(EditorCanvas):
         W=round(photo.width/25.4*140);H=round(photo.height/25.4*140);changed_size=(W,H)!=(self.photo_width,self.photo_height);self.photo_width=W;self.photo_height=H
         self.scene().clear();self.layers=[]
         frame=self.scene().addRect(0,0,W,H,QPen(QColor('#9caaba')),QColor(photo.background));frame.setFlag(QGraphicsItem.ItemClipsChildrenToShape)
-        self.photo_rect=QRectF(0,0,W,H);self.setSceneRect(-36,-36,W+72,H+72)
+        self.photo_rect=QRectF(0,0,W,H);self.setSceneRect(-2*W,-2*H,5*W,5*H)
         for i,(layer,image) in enumerate(zip(photo.layers,images)):self.layers.append(LayerItem(image,i,layer,self,frame))
         self.active=index;self.ready=True;self.select_index(index)
         if photo.border and photo.border_mm:
             b=photo.border_mm/25.4*140;pen=QPen(QColor(photo.border_color),b);border=self.scene().addRect(b/2,b/2,W-b,H-b,pen);border.setZValue(100);border.setAcceptedMouseButtons(Qt.NoButton)
-        if changed_size or new_document or self.transform().isIdentity():self.fitInView(self.sceneRect(),Qt.KeepAspectRatio)
+        if changed_size or new_document or self.transform().isIdentity():self.fit_preview()
     def select_index(self,index):
         self.active=index
         owner=(getattr(self,'document_id',None),index,self.layers[index].layer.source,self.layers[index].layer.label) if 0<=index<len(self.layers) else None
@@ -185,6 +204,7 @@ class TransformCanvas(EditorCanvas):
         super().mouseDoubleClickEvent(e)
     def wheelEvent(self,e):
         if e.modifiers()&Qt.ControlModifier:
+            self.preview_fitted=False
             factor=1.15 if e.angleDelta().y()>0 else 1/1.15;self.scale(factor,factor)
         else:self.zoomed.emit(1.05 if e.angleDelta().y()>0 else 1/1.05)
     def keyPressEvent(self,e):

@@ -125,7 +125,8 @@ class Cropper(QWidget):
         self.setStyleSheet('QPushButton {padding:6px 9px;font-size:12px;}')
         layout=QVBoxLayout(self);layout.setContentsMargins(0,0,0,0);layout.setSpacing(5)
         self.header=QHBoxLayout();header=QLabel('Cropper');header.setObjectName('title');self.header.addWidget(header)
-        description=QLabel('Import a scan or photo, mark the crops, then Crop.');description.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Preferred);description.setToolTip(description.text());self.header.addWidget(description,1)
+        from app.ui.buttons import ElidedLabel
+        self.description=ElidedLabel('Import a scan or photo, mark the crops, then Crop.');self.description.setToolTip(self.description.text());self.header.addWidget(self.description,1)
         self.crop_button=self.button('Crop',self.keep_all,self.header);self.crop_button.setObjectName('primary');self.crop_button.setEnabled(False);layout.addLayout(self.header)
         row=QHBoxLayout();self.source_actions=[]
         self.source_actions.append((self.button('Import images / scan sheets',self.import_sources,row),'Import images / scan sheets','import'))
@@ -171,6 +172,7 @@ class Cropper(QWidget):
         if refresh:self.refresh_regions(self.region_list.currentRow())
     def fit_width(self,width):
         from app.ui.icons import icon
+        self.description.setVisible(width>=740)
         for button,title,name in self.source_actions:
             button.setText('' if width<800 else title);button.setIcon(icon(name));button.setToolTip(title);button.setAccessibleName(title);button.setMaximumWidth(34 if width<800 else 16777215)
     def restore_sources(self):

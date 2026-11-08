@@ -1,6 +1,18 @@
 # Validation and release limits
 
-This file records executed checks and separates software verification from physical studio acceptance. Current version: **3.4.0**. Live hosted results are available in [Windows tests](https://github.com/ovi2riyad/Printora/actions/workflows/tests.yml).
+This file records executed checks and separates software verification from physical studio acceptance. Current version: **3.4.1**. Live hosted results are available in [Windows tests](https://github.com/ovi2riyad/Printora/actions/workflows/tests.yml).
+
+## 3.4.1 Crop, retouching and fit corrections
+
+Before correction, native regressions reproduced the customer caption extending outside Cropper and covering Crop at three workspace widths. The corrected header uses bounded, elided captions. Actual photo fit uses the available height beside floating controls: on the 1366 × 768 test desktop the portrait was 445 logical pixels tall, approximately 21% larger than the supplied 3.4.0 screenshot, with zero outer scrolling. Cropper/Portrait/Joint/ID native checks passed at 100% and 200% scaling. A tall portrait retains its aspect ratio; empty horizontal space is not filled by stretching it.
+
+New deterministic tests measure luminance/chroma variance reduction, retained step edges, tile seams, protected facial features/alpha, each tone/color/sharpening control, black preservation, Auto Fix repeatability/undo/locking, legacy fields, source/cache invalidation and original-file integrity. A private read-only comparison of prepared record #000063 also caught and corrected pale-skin white-balance contamination. Its SHA-256 stayed unchanged; the comparison stays local and is excluded from Git/releases. Subject-region noise estimation has a separate regression against blank-background bias.
+
+The expanded local full suite passed **576 tests / 13 optional-fixture skips / zero failures/errors**, with two existing Pillow warnings, in **277.38 seconds**. This run preceded the final numeric-field-width correction and extra frozen acceptance assertions. The final dedicated/native tests and full hosted Windows results are linked in the release record. No pre-existing test was deleted or weakened. The first interim full run was stopped to correct the real-photo Auto Fix issue and is not counted as a completed pass.
+
+Cold 1200 × 1600 processing measured about 5.6 seconds on this CPU; repeating unchanged pixel settings through the bounded cache measured about 4 ms. This is one local measurement, not a hardware performance guarantee. Preview now processes native working pixels before display downsampling, matching the export pipeline. Existing nonzero retouching settings can render differently under the improved algorithms; zero/default processing remains neutral. Automatic restoration of lost detail or Lightroom/Photoshop equivalence is not claimed.
+
+The expanded synthetic workflow adds actual Auto Fix/repeat/undo, tight preview fit and Crop-header geometry checks to the prior 40-check acceptance. Frozen and installer results are reported for the new payload separately in the release. Physical scanning/printing remains deferred.
 
 ## 3.3.3 credits, licensing and naming
 

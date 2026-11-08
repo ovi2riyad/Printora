@@ -4,11 +4,17 @@ import hashlib
 import threading
 import sys
 import math
+import json
+from collections import OrderedDict
 from PIL import Image, ImageOps, ImageFilter,ImageEnhance,ImageDraw
 
 SUPPORTED={'.jpg','.jpeg','.png','.webp','.bmp','.tif','.tiff'}
 _lock=threading.Lock()
 _session=None
+_prepared_cache=OrderedDict()
+_prepared_bytes=0
+_prepared_lock=threading.RLock()
+_PREPARED_BUDGET=64*1024*1024
 
 def load_image(path,limit=6000):
     if not Path(path).exists(): raise FileNotFoundError(f'Missing source image: {path}. Restore the file or replace this layer.')
@@ -96,7 +102,38 @@ def remove_background(source,model_dir,cache_dir,force=False,quality='balanced')
         tmp=target.with_suffix('.tmp'); result.save(tmp,format='PNG'); tmp.replace(target)
     return str(target)
 
+def clear_processed_cache():
+    global _prepared_bytes
+    with _prepared_lock:_prepared_cache.clear();_prepared_bytes=0
+
+
 def prepare_layer(layer,before=False,limit=6000):
+    """Cache pixel edits independently of canvas transforms, with a 64 MiB limit."""
+    from dataclasses import asdict
+    from app.models.domain import validate_layer_processing
+    validate_layer_processing(layer)
+    settings=asdict(layer)
+    for key in ('x','y','scale','rotation','label','visible','locked','group'):settings.pop(key,None)
+    def stamp(path):
+        asset=Path(path).resolve()
+        try:info=asset.stat();return str(asset),info.st_mtime_ns,info.st_size
+        except OSError:return str(asset),None,None
+    key=(before,limit,stamp(layer.source),stamp(layer.mask) if layer.mask else None,json.dumps(settings,sort_keys=True,allow_nan=False))
+    global _prepared_bytes
+    with _prepared_lock:
+        if key in _prepared_cache:
+            _prepared_cache.move_to_end(key);return _prepared_cache[key].copy()
+    image=_prepare_layer(layer,before,limit);size=image.width*image.height*len(image.getbands())
+    if size<=_PREPARED_BUDGET:
+        with _prepared_lock:
+            if key not in _prepared_cache:
+                while _prepared_cache and _prepared_bytes+size>_PREPARED_BUDGET:
+                    _,old=_prepared_cache.popitem(last=False);_prepared_bytes-=old.width*old.height*len(old.getbands())
+                _prepared_cache[key]=image.copy();_prepared_bytes+=size
+    return image
+
+
+def _prepare_layer(layer,before=False,limit=6000):
     im=load_image(layer.source if before else layer.mask or layer.source,limit)
     if not before:
         alpha=im.getchannel('A')
@@ -135,7 +172,10 @@ def prepare_layer(layer,before=False,limit=6000):
         rgb=process_portrait(rgb,layer)
         for field,enhancer in [('brightness',ImageEnhance.Brightness),('contrast',ImageEnhance.Contrast),('saturation',ImageEnhance.Color),('sharpness',ImageEnhance.Sharpness)]:
             value=getattr(layer,field)
-            if value!=1:rgb=enhancer(rgb).enhance(value)
+            if value!=1:
+                if field=='sharpness' and value>1:
+                    rgb=rgb.filter(ImageFilter.UnsharpMask(radius=max(.7,max(rgb.size)/1400),percent=round((value-1)*100),threshold=3))
+                else:rgb=enhancer(rgb).enhance(value)
         im=rgb.convert('RGBA');im.putalpha(alpha)
         if layer.defringe:im=reduce_halo(im,layer.defringe)
     if layer.flip_h:im=ImageOps.mirror(im)

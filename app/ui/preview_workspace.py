@@ -9,7 +9,7 @@ class FloatingFit(QToolButton):
         self.view=view;self.setText('Fit');self.setAccessibleName('Fit photo preview')
         self.setToolTip('Fit preview · Ctrl+0');self.setFixedSize(42,28)
         self.setStyleSheet('QToolButton {background:rgba(24,40,68,220);color:#edf4ff;border:1px solid #7187a8;border-radius:6px;}')
-        self.clicked.connect(lambda:view.fitInView(view.sceneRect(),Qt.KeepAspectRatio))
+        self.clicked.connect(lambda:view.fit_preview() if hasattr(view,'fit_preview') else view.fitInView(view.sceneRect(),Qt.KeepAspectRatio))
         view.viewport().installEventFilter(self);self.place();self.show()
     def place(self):self.move(10,max(8,self.parentWidget().height()-self.height()-10));self.raise_()
     def eventFilter(self,obj,event):
@@ -31,6 +31,8 @@ class CompactEditorPage(QWidget):
             button.setMinimumWidth(0);button.setMaximumWidth(34 if compact else 16777215)
         for button in w.quick_quantities:button.setVisible(width>=620 or button.text() in ('2','4'))
         w.auto_soften.setText('' if width<620 else 'Auto soften');w.auto_soften.setIcon(icon('portrait'));w.auto_soften.setAccessibleName('Auto portrait softener')
+        if hasattr(w,'auto_fix'):
+            w.auto_fix.setText('' if width<760 else 'Auto Fix');w.auto_fix.setIcon(icon('settings'));w.auto_fix.setAccessibleName('Auto Fix portrait')
         w.brush_caption.setVisible(width>=650);w.shape_caption.setVisible(width>=650)
         w.brush_size.setMaximumWidth(64 if width<650 else 80)
 
@@ -63,4 +65,7 @@ class FloatingPanelHost(QWidget):
         panel.setMaximumWidth(52 if collapsed else 310)
         panel.setGeometry(max(4,self.width()-width-10),8,width,42 if collapsed else max(80,self.height()-16))
         panel.raise_()
+        from PySide6.QtWidgets import QGraphicsView
+        for view in self.findChildren(QGraphicsView):
+            if hasattr(view,'set_preview_obstruction'):view.set_preview_obstruction(0 if collapsed else width+20)
     def resizeEvent(self,event):super().resizeEvent(event);self.arrange()

@@ -108,7 +108,8 @@ class StudioManager:
         w.stack.addWidget(self.customer_page);w.stack.addWidget(self.library)
         from PySide6.QtWidgets import QToolButton,QMenu,QSizePolicy
         from app.ui.icons import icon
-        self.import_customer=QLabel('Customer: unassigned');self.import_customer.setMinimumWidth(140);self.import_customer.setMaximumWidth(200);self.import_customer.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Preferred);w.cropper.header.insertWidget(w.cropper.header.count()-1,self.import_customer)
+        from app.ui.buttons import ElidedLabel
+        self.import_customer=ElidedLabel('Customer: unassigned');self.import_customer.setMaximumWidth(160);w.cropper.header.insertWidget(w.cropper.header.count()-1,self.import_customer)
         choose=QToolButton();choose.setIcon(icon('portrait'));choose.setToolTip('Assign imported photos to a customer');choose.setAccessibleName('Import customer');choose.setPopupMode(QToolButton.InstantPopup);menu=QMenu(choose);menu.addAction('Choose / create customer',self.choose_import_customer);menu.addAction('Unassigned',self.clear_import_customer);choose.setMenu(menu);w.cropper.header.insertWidget(w.cropper.header.count()-1,choose)
         self.import_customer_id=None
         w.cropper.on_sources_imported=lambda paths:self.customers.assign_sources(self.import_customer_id,paths,w.tray)

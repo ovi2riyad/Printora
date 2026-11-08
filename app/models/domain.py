@@ -2,7 +2,7 @@ from dataclasses import dataclass, field, asdict
 import uuid
 import math
 
-PROCESSING_LIMITS={'denoise':(0,1),'shadows':(-1,1),'temperature':(-1,1),'skin_soften':(0,1)}
+PROCESSING_LIMITS={'denoise':(0,1),'shadows':(-1,1),'temperature':(-1,1),'skin_soften':(0,1),'color_denoise':(0,1),'tint':(-1,1)}
 
 def validate_layer_processing(layer):
     for key,(low,high) in PROCESSING_LIMITS.items():
@@ -39,6 +39,8 @@ class Layer:
     shadows: float = 0.0
     temperature: float = 0.0
     skin_soften: float = 0.0
+    color_denoise: float = 0.0
+    tint: float = 0.0
 
 @dataclass
 class Photo:

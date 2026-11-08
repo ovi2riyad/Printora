@@ -59,7 +59,7 @@ class StudioWindow(QMainWindow):
         self.stack=WorkspaceStack();layout.addWidget(self.stack,1);self.stack.addWidget(self.dashboard());self.stack.addWidget(self.workspace());self.stack.addWidget(self.print_page())
         self.cropper=Cropper(self.tray,self.run,self.notify,self.use_crops,db=self.db);self.stack.addWidget(self.cropper)
         footer=QHBoxLayout();self.status=QLabel('Ready. All photographs stay on this PC.');self.status.setWordWrap(True);self.status.setTextFormat(Qt.PlainText);self.status.setMaximumHeight(38);self.status.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Preferred);footer.addWidget(self.status,1);self.progress=QProgressBar();self.progress.setRange(0,0);self.progress.setFixedWidth(140);self.progress.hide();footer.addWidget(self.progress);layout.addLayout(footer)
-        for title,key,fn in [('Import','Ctrl+O',self.import_to_cropper),('Save','Ctrl+S',self.save_job),('Undo','Ctrl+Z',self.undo_edit),('Redo','Ctrl+Shift+Z',self.redo_edit),('Redo','Ctrl+Y',self.redo_edit),('Transform','Ctrl+T',lambda:self.canvas.set_tool('move')),('Fit view','Ctrl+0',lambda:self.canvas.fitInView(self.canvas.sceneRect(),Qt.KeepAspectRatio)),('100%','Ctrl+1',self.canvas.resetTransform)]:
+        for title,key,fn in [('Import','Ctrl+O',self.import_to_cropper),('Save','Ctrl+S',self.save_job),('Undo','Ctrl+Z',self.undo_edit),('Redo','Ctrl+Shift+Z',self.redo_edit),('Redo','Ctrl+Y',self.redo_edit),('Transform','Ctrl+T',lambda:self.canvas.set_tool('move')),('Fit view','Ctrl+0',self.canvas.fit_preview),('100%','Ctrl+1',self.canvas.resetTransform)]:
             action=QAction(title,self);action.setShortcut(key);action.triggered.connect(fn);self.addAction(action)
         self._save_generation=0;self._autosave_callback=None;self._save_prompt_active=False
         self.autosave=QTimer(self);self.autosave.setSingleShot(True);self.autosave.setInterval(2200);self.apply_theme()
@@ -116,6 +116,7 @@ class StudioWindow(QMainWindow):
             swatch=QToolButton();swatch.setFixedSize(28,28);swatch.setCheckable(True);swatch.setAccessibleName('Background color: '+name);swatch.setToolTip('Background color');swatch.setStyleSheet(f'QToolButton {{background:{color};border:2px solid #7187a8;border-radius:4px;}} QToolButton:checked {{border:3px solid #24d5ef;}}');swatch.clicked.connect(lambda checked=False,c=color:self.set_color('background',c));preview_actions.addWidget(swatch);self.background_swatches.append((swatch,color))
         self.background_color=QToolButton();self.background_color.setText('…');self.background_color.setToolTip('Background color · More colors');self.background_color.setAccessibleName('More background colors');self.background_color.clicked.connect(lambda:self.pick_color('background'));preview_actions.addWidget(self.background_color)
         self.auto_soften=QPushButton('Auto soften');self.auto_soften.setCheckable(True);self.auto_soften.setToolTip('Natural face/skin smoothing. Click again to remove it. Original pixels stay unchanged.');self.auto_soften.clicked.connect(self.toggle_softener);preview_actions.addWidget(self.auto_soften)
+        self.auto_fix=QPushButton('Auto Fix');self.auto_fix.setToolTip('Analyze the original subject and set color, tones, noise reduction, sharpening and skin softness. Undo restores your previous settings.');self.auto_fix.clicked.connect(self.auto_fix_portrait);preview_actions.addWidget(self.auto_fix)
         preview_actions.addStretch();self.top_preview=self.button('Preview PDF',self.show_print,self.editor_actions,True);outer.addLayout(preview_actions)
         options=QHBoxLayout();options.addWidget(self.guide);options.addWidget(self.before);options.addStretch();outer.addLayout(options)
         body=QHBoxLayout();outer.addLayout(body,1)
@@ -182,8 +183,9 @@ class StudioWindow(QMainWindow):
         processing=QWidget();processing_form=QVBoxLayout(processing);processing_form.setContentsMargins(8,4,8,6);processing_form.setSpacing(5)
         processing_scroll=QScrollArea();processing_scroll.setWidgetResizable(True);processing_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff);processing_scroll.setWidget(processing);self.floating_tabs.addTab(processing_scroll,'Image Processing')
         self.subject.setMinimumContentsLength(8);self.subject.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon);processing_form.addWidget(self.subject)
-        for label,key,low,high,value in [('Noise reduction','denoise',0,1,0),('Brightness','brightness',.4,1.8,1),('Contrast','contrast',.4,1.8,1),('Color','saturation',0,2,1),('Shadows','shadows',-1,1,0),('Warmth','temperature',-1,1,0),('Sharpness','sharpness',0,3,1),('Skin soften','skin_soften',0,1,0)]:
-            control=self.make_control(key,low,high,value,.05);control.setMaximumWidth(78);self.pair(processing_form,label,control)
+        for label,key,low,high,value in [('Luminance noise','denoise',0,1,0),('Color noise','color_denoise',0,1,0),('Brightness','brightness',.4,1.8,1),('Contrast','contrast',.4,1.8,1),('Color','saturation',0,2,1),('Shadows','shadows',-1,1,0),('Warmth','temperature',-1,1,0),('Tint','tint',-1,1,0),('Sharpness','sharpness',0,3,1),('Skin soften','skin_soften',0,1,0)]:
+            control=self.make_control(key,low,high,value,.05);control.setFixedWidth(100);self.pair(processing_form,label,control)
+            control.setToolTip({'denoise':'Reduce grain in luminance while retaining edges.','color_denoise':'Reduce colored speckles separately from brightness detail.','skin_soften':'Smooth detected face/skin texture while protecting facial features. Zero removes softening.','tint':'Green (negative) to magenta (positive).','sharpness':'Thresholded sharpening above 1; below 1 softens the whole layer.'}.get(key,label))
         self.button('Reset processing',self.reset_adjustments,processing_form);processing_form.addStretch()
         basic=QWidget();basic_layout=QVBoxLayout(basic);basic_layout.setContentsMargins(6,4,6,6)
         for widget in (self.profile_picker,self.apply_profile_button):basic_layout.addWidget(widget)
@@ -346,10 +348,10 @@ class StudioWindow(QMainWindow):
         if [self.subject.itemText(i) for i in range(self.subject.count())]!=labels:
             previous=self.subject.currentIndex();self.subject.blockSignals(True);self.subject.clear();self.subject.addItems(labels);self.subject.setCurrentIndex(max(0,min(previous,len(labels)-1)));self.subject.blockSignals(False)
         l=self.layer()
-        for key in ('scale','x','y','rotation','erosion','feather','defringe','brightness','contrast','saturation','sharpness','denoise','shadows','temperature','skin_soften'):
+        for key in ('scale','x','y','rotation','erosion','feather','defringe','brightness','contrast','saturation','sharpness','denoise','shadows','temperature','skin_soften','color_denoise','tint'):
             getattr(self,key).setValue(getattr(l,key) if l else (1 if key in ('scale','brightness','contrast','saturation','sharpness') else .5 if key in ('x','y') else 0))
         self.layer_visible.setChecked(l.visible if l else True);self.layer_locked.setChecked(l.locked if l else False)
-        for key in ('scale','x','y','rotation','erosion','feather','defringe','brightness','contrast','saturation','sharpness','denoise','shadows','temperature','skin_soften'):getattr(self,key).setEnabled(not l or not l.locked)
+        for key in ('scale','x','y','rotation','erosion','feather','defringe','brightness','contrast','saturation','sharpness','denoise','shadows','temperature','skin_soften','color_denoise','tint'):getattr(self,key).setEnabled(bool(l) and not l.locked)
         self.before.blockSignals(True);self.before.setChecked(False);self.before.blockSignals(False)
         count=sum(bool(l.mask) for l in p.layers)
         self.background_status.setText('Background removed. Choose a color below.' if p.layers and count==len(p.layers) else 'Background has not been removed.' if count==0 else f'{count} backgrounds removed.')
@@ -359,6 +361,7 @@ class StudioWindow(QMainWindow):
         for swatch,color in self.background_swatches:swatch.setChecked(color.lower()==p.background.lower())
         active=[layer for layer in p.layers if layer.visible and not layer.locked]
         self.auto_soften.setChecked(bool(active) and all(layer.skin_soften>0 for layer in active));self.auto_soften.setEnabled(bool(active))
+        self.auto_fix.setEnabled(bool(active))
         self.syncing=False;self.sync_print_options();self.update_capacity();self.update_guide()
         if redraw:self.schedule_preview()
     def controls_changed(self,*_):
@@ -369,7 +372,7 @@ class StudioWindow(QMainWindow):
             if l.group and not l.locked:
                 from app.services.layer_groups import transform_group
                 transform_group(p,self.subject.currentIndex(),self.x.value(),self.y.value(),self.scale.value(),self.rotation.value())
-            for key in ('scale','x','y','rotation','erosion','feather','defringe','brightness','contrast','saturation','sharpness','denoise','shadows','temperature','skin_soften'):setattr(l,key,round(getattr(self,key).value()) if key=='erosion' else getattr(self,key).value())
+            for key in ('scale','x','y','rotation','erosion','feather','defringe','brightness','contrast','saturation','sharpness','denoise','shadows','temperature','skin_soften','color_denoise','tint'):setattr(l,key,round(getattr(self,key).value()) if key=='erosion' else getattr(self,key).value())
             l.visible=self.layer_visible.isChecked();l.locked=self.layer_locked.isChecked()
         if old_size!=(p.width,p.height):self.job.placements=[]
         elif old_quantity!=p.quantity:
@@ -404,7 +407,8 @@ class StudioWindow(QMainWindow):
         photo=copy.deepcopy(self.photo);before=self.before.isChecked();index=self.subject.currentIndex()
         mask_only=hasattr(self,'editor_tools') and self.editor_tools.mask_only.isChecked()
         def render():
-            images=[prepare_layer(l,before,limit=1400) for l in photo.layers]
+            images=[prepare_layer(l,before) for l in photo.layers]
+            for image in images:image.thumbnail((1400,1400),Image.Resampling.LANCZOS)
             if mask_only and 0<=index<len(images):images[index]=images[index].getchannel('A').convert('RGBA')
             return images
         self.run(render,lambda images:self.canvas.set_layers(photo,images,index))
@@ -456,7 +460,8 @@ class StudioWindow(QMainWindow):
         if layer and not layer.locked:
             self.checkpoint()
             for key in ('brightness','contrast','saturation','sharpness'):setattr(layer,key,1.)
-            for key in ('denoise','shadows','temperature','skin_soften'):setattr(layer,key,0.)
+            from app.models.domain import PROCESSING_LIMITS
+            for key in PROCESSING_LIMITS:setattr(layer,key,0.)
             self.sync_controls()
     def toggle_softener(self,enabled):
         if self.busy or not self.photo:return
@@ -464,6 +469,24 @@ class StudioWindow(QMainWindow):
         for layer in self.photo.layers:
             if layer.visible and not layer.locked:layer.skin_soften=.6 if enabled else 0.
         self.sync_controls()
+        if enabled:self.notify('Face/skin softening enabled. No detected face means no skin change; use Auto Fix for a detection summary.')
+    def auto_fix_portrait(self):
+        if self.busy or not self.photo:return
+        from app.services.imaging import load_image
+        from app.services.portrait_processing import auto_adjustments
+        layers=[(index,copy.deepcopy(layer)) for index,layer in enumerate(self.photo.layers) if layer.visible and not layer.locked]
+        if not layers:return
+        document=self.photo
+        def analyze():return [(index,*auto_adjustments(load_image(layer.mask or layer.source,2000))) for index,layer in layers]
+        def done(results):
+            if self.photo is not document:return
+            self.checkpoint()
+            for index,values,found in results:
+                for key,value in values.items():setattr(document.layers[index],key,value)
+            self.sync_controls()
+            missing=sum(not found for _,_,found in results)
+            self.notify('Auto Fix applied. Undo restores the previous settings.'+ (f' No face found in {missing} layer(s); skin softening was left off there.' if missing else ' Face/skin softening included.'))
+        self.run(analyze,done)
     def fit_photo(self,mode='auto'):
         if mode=='auto':mode='balanced'
         if self.busy or not self.photo or not self.photo.layers:return

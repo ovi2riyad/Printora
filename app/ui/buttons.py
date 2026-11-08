@@ -1,6 +1,18 @@
 """Native styled buttons that wrap their caption when a narrow panel needs it."""
 from PySide6.QtCore import Qt,QRect,QSize
-from PySide6.QtWidgets import QPushButton,QSizePolicy,QStyle,QStyleOptionButton,QStylePainter
+from PySide6.QtWidgets import QPushButton,QSizePolicy,QStyle,QStyleOptionButton,QStylePainter,QLabel
+
+class ElidedLabel(QLabel):
+    """Bound optional captions without letting long text cover adjacent actions."""
+    def __init__(self,text='',parent=None):
+        super().__init__(text,parent);self.setSizePolicy(QSizePolicy.Preferred,QSizePolicy.Preferred)
+    def minimumSizeHint(self):return QSize(0,super().minimumSizeHint().height())
+    def sizeHint(self):return QSize(min(160,super().sizeHint().width()),super().sizeHint().height())
+    def setText(self,text):super().setText(text);self.setToolTip(text)
+    def paintEvent(self,event):
+        painter=QStylePainter(self)
+        text=self.fontMetrics().elidedText(self.text(),Qt.ElideRight,max(0,self.contentsRect().width()))
+        self.style().drawItemText(painter,self.contentsRect(),Qt.AlignVCenter|Qt.AlignLeft,self.palette(),self.isEnabled(),text,self.foregroundRole())
 
 class WrappingButton(QPushButton):
     def __init__(self,*args,**kwargs):

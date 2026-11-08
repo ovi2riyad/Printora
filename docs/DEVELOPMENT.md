@@ -35,6 +35,14 @@ Printora is an existing Python/PySide6 Windows desktop application. Continue its
 
 ## Data and models
 
+### Portrait processing and preview fit (3.4.1)
+
+`services/portrait_processing.py` separates luminance/chroma denoising in Lab using overlapped non-local-means tiles, face/skin smoothing with protected features, signed shadows and multiplicative warmth/tint. `auto_adjustments()` analyzes unedited foreground/face pixels and returns bounded settings; the GUI applies them as one undoable edit. It must not derive white balance from pale skin or estimate subject noise from a large blank scan background. New appended `Layer.color_denoise` and `tint` fields default to zero for older documents. Existing nonzero warmth/sharpness/denoise/softness settings now use the improved algorithms; their appearance can change. Zero/default settings retain the old unadjusted pixels.
+
+Preview processes the same native working image as export, then downsizes for display. `imaging.prepare_layer()` has a thread-protected 64 MiB LRU cache keyed by input file stamps and pixel settings, excluding canvas transforms/visibility/identity. Returned images are copies. Do not omit mask strokes, flips, source/mask stamps or new processing settings from that key. Very large entries are not cached. `clear_processed_cache()` supports explicit invalidation. Cold CPU processing can take seconds; workers keep it outside the GUI thread.
+
+`TransformCanvas.fit_preview()` fits `photo_rect` with a small screen margin and centers it in space beside the floating panel. It does not fit the larger off-photo editing scene. Manual view zoom survives redraws/resizes until Fit is requested. `ElidedLabel` gives optional header text a real bounded minimum-size contract; `Ignored` captions combined with explicit minimum widths previously overlapped Crop. Preserve geometry regressions and signed-number readability.
+
 App data lives under `%LOCALAPPDATA%\StudioPhotoMaker`, independently of `C:\Printora` and Documents working folders. Keep that legacy directory name compatible. The main and library databases use WAL. The application data includes `library`, `cache`, `job_assets`, `document-sessions`, `models` and export-recovery records.
 
 Background model lookup checks configured folder, app-data models, then bundled resources. ONNX Runtime uses local CPU inference. The human portrait model is bundled by the spec; a missing model fails the build. Fast working images cap at 2000 px/edge; Balanced/Fine at 4000. General loading normally caps at 6000. Output limits reject raster exports above 50 MP and transformed buffers above 100 MP rather than changing physical size.
